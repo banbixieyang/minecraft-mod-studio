@@ -30,10 +30,35 @@ if (fs.existsSync(path.join(DST, '.studio', 'project.json'))) {
   fresh.entries = {};
   fresh.hooks = { java: [], js: [] };
   P.saveProject(DST, fresh);
+} else {
+  // 工程不存在就现建 —— clone 下来第一次跑不用先手动建。
+  P.createProject(DST, {
+    name: '安装测试',
+    id: 'packtest',
+    pkg: 'com.packtest',
+    version: '0.1.0',
+    platform: 'fabric',
+    mcVersion: '26.3',
+  });
 }
 
 // ---------------- 1. 捕获 ----------------
 console.log('\n[1] 从 testmod 捕获一套');
+
+// testmod 里得有内容才能捕获。clone 下来第一次跑，
+// 里面是空的 —— 先用 smoke 灌一批，省得让人手动准备。
+{
+  const probe = P.loadProject(SRC);
+  const hasSword = (probe.entries?.item || []).some((e) => e.id === 'ruby_sword');
+  if (!hasSword) {
+    console.log('    testmod 是空的，先跑一遍 smoke 灌内容');
+    const { execFileSync } = await import('node:child_process');
+    execFileSync(process.execPath, [path.join(HERE, 'smoke.mjs'), 'projects/testmod'], {
+      cwd: ROOT, stdio: 'inherit',
+    });
+  }
+}
+
 const srcProject = P.loadProject(SRC);
 const pack = capturePack(srcProject, {
   root: SRC,

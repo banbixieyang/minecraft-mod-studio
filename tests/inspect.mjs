@@ -10,15 +10,46 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { analyze, reportToPack } from '../core/analyze/report.mjs';
 import { getEffect, effectsForAbility } from '../core/library/effects.mjs';
 import { renderText } from '../core/library/pack.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
-const FALLEN = path.resolve(ROOT, '../fallen/build/libs/fallen-0.1.0.jar');
-const SOURCES = path.resolve(ROOT, '../fallen/build/libs/fallen-0.1.0-sources.jar');
+const FIXTURE = path.join(HERE, 'fixtures', 'samplemod-0.1.0.jar');
+
+/**
+ * 样本 jar 从哪来：
+ *   1. 命令行参数（普通包路径，sources 包路径）
+ *   2. 环境变量 MCSTUDIO_SAMPLE_JAR / MCSTUDIO_SAMPLE_SOURCES
+ *   3. 仓库自带的 tests/fixtures/
+ *   4. 都没有 → 现场调 tools/make-sample-mod.mjs 造
+ */
+async function resolveSamples() {
+  let main = process.argv[2] || process.env.MCSTUDIO_SAMPLE_JAR;
+  let src = process.argv[3] || process.env.MCSTUDIO_SAMPLE_SOURCES;
+  if (main && fs.existsSync(main)) {
+    if (!src) {
+      const guess = path.resolve(main).replace(/\.jar$/, '-sources.jar');
+      if (fs.existsSync(guess)) src = guess;
+    }
+    return { main: path.resolve(main), src: src ? path.resolve(src) : null };
+  }
+  if (fs.existsSync(FIXTURE)) {
+    const s = FIXTURE.replace(/\.jar$/, '-sources.jar');
+    return { main: FIXTURE, src: fs.existsSync(s) ? s : null };
+  }
+  await import(pathToFileURL(path.join(ROOT, 'tools', 'make-sample-mod.mjs')).href);
+  if (!fs.existsSync(FIXTURE)) {
+    console.error('样本 jar 造不出来。可以手动跑 node tools/make-sample-mod.mjs，或把 jar 路径当参数传进来。');
+    process.exit(1);
+  }
+  const s = FIXTURE.replace(/\.jar$/, '-sources.jar');
+  return { main: FIXTURE, src: fs.existsSync(s) ? s : null };
+}
+
+const { main: FALLEN, src: SOURCES } = await resolveSamples();
 
 let failed = 0;
 const ok = (cond, msg, extra) => {
@@ -26,8 +57,8 @@ const ok = (cond, msg, extra) => {
   if (!cond) failed++;
 };
 
-if (!fs.existsSync(FALLEN)) {
-  console.error(`找不到样本 jar：${FALLEN}\n先构建 fallen。`);
+if (!SOURCES) {
+  console.error(`找不到 sources jar（${FALLEN.replace(/\.jar$/, '-sources.jar')}）。\n跑一次 node tools/make-sample-mod.mjs 就能生成。`);
   process.exit(1);
 }
 

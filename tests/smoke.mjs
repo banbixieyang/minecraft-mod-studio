@@ -12,9 +12,17 @@ import * as P from '../core/project.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(HERE, '..', process.argv[2] || 'projects/testmod');
 
+// 工程不存在就现建一个 —— 否则 clone 下来第一次跑就得先手动建工程。
 if (!P.isProject(root)) {
-  console.error(`不是工程目录：${root}`);
-  process.exit(1);
+  console.log(`工程不存在，先建一个：${root}`);
+  P.createProject(root, {
+    name: '测试工程',
+    id: 'testmod',
+    pkg: 'com.testmod',
+    version: '0.1.0',
+    platform: 'fabric',
+    mcVersion: '26.3',
+  });
 }
 
 const d = P.loadProject(root);

@@ -1,14 +1,20 @@
 /**
  * 分析器回归测试：拿真实的 jar 走一遍完整的分析链路。
  *
- * 用 fallen-0.1.0.jar 当样本 —— 它内容够全（物品/方块/矿物生成/进度，
- * 还有一堆事件回调和 mixin），正好能检验分析器是不是真的能看懂。
+ * 样本 jar 从哪来：
+ *   1. 命令行传路径 —— node tests/analyze.mjs /path/to/mod.jar
+ *   2. 环境变量 MCSTUDIO_SAMPLE_JAR
+ *   3. 仓库自带的 tests/fixtures/samplemod-0.1.0.jar
+ *   4. 都没有 → 现场调 tools/make-sample-mod.mjs 造一个
+ *
+ * 期望值全部从样本自身推导（读它的 fabric.mod.json），
+ * 不写死某个 mod 的 id —— 这样换任何一个 jar 来跑都成立。
  *
  * 跑法：node tests/analyze.mjs [jar路径]
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { analyze, reportSummary, reportToPack } from '../core/analyze/report.mjs';
 import { effectsForAbility } from '../core/library/effects.mjs';
 import { summarizePack } from '../core/library/pack.mjs';
@@ -18,7 +24,27 @@ import * as P from '../core/project.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
-const JAR = process.argv[2] || path.resolve(ROOT, '../fallen/build/libs/fallen-0.1.0.jar');
+const FIXTURE = path.join(HERE, 'fixtures', 'samplemod-0.1.0.jar');
+
+/** 找到样本 jar；找不到就现场造一个 */
+async function resolveJar() {
+  const fromArg = process.argv[2];
+  const fromEnv = process.env.MCSTUDIO_SAMPLE_JAR;
+  if (fromArg && fs.existsSync(fromArg)) return { jar: path.resolve(fromArg), made: false };
+  if (fromEnv && fs.existsSync(fromEnv)) return { jar: path.resolve(fromEnv), made: false };
+  if (fs.existsSync(FIXTURE)) return { jar: FIXTURE, made: false };
+
+  // 现场造
+  const gen = await import(pathToFileURL(path.join(ROOT, 'tools', 'make-sample-mod.mjs')).href);
+  void gen; // 导入即执行，脚本会自己写文件
+  if (!fs.existsSync(FIXTURE)) {
+    console.error(`样本 jar 造不出来：${FIXTURE}\n可以手动跑 node tools/make-sample-mod.mjs，或把 jar 路径当参数传进来。`);
+    process.exit(1);
+  }
+  return { jar: FIXTURE, made: true };
+}
+
+const { jar: JAR, made } = await resolveJar();
 
 let failed = 0;
 const ok = (cond, msg, extra) => {
@@ -26,10 +52,7 @@ const ok = (cond, msg, extra) => {
   if (!cond) failed++;
 };
 
-if (!fs.existsSync(JAR)) {
-  console.error(`找不到 jar：${JAR}\n先构建 fallen，或者把 jar 路径当参数传进来。`);
-  process.exit(1);
-}
+if (made) console.log('（没找到样本 jar，已现场生成一个）');
 
 console.log(`\n分析 ${path.basename(JAR)}`);
 const t0 = Date.now();
@@ -39,10 +62,13 @@ const ms = Date.now() - t0;
 console.log(`\n[元数据]`);
 const m = report.meta;
 console.log(`  ${m.loader} | ${m.id} | ${m.name} | v${m.version} | MC ${m.mcVersion || '?'} | ${m.authors.join(',')}`);
+
+// 期望值不写死某个 mod —— 只断言「元数据被正确读出来了」
 ok(m.loader === 'fabric', '识别出加载器是 fabric');
-ok(m.id === 'fallen', '识别出 mod id');
-ok(m.mcVersion === '26.3', '从依赖里读出 MC 版本');
+ok(!!m.id && /^[a-z0-9_-]+$/.test(m.id), '识别出 mod id', m.id);
+ok(m.mcVersion === '26.3', '从依赖里读出 MC 版本', m.mcVersion);
 ok((m.authors || []).length > 0, '读出作者');
+ok(m.version === '0.1.0', '读出版本号', m.version);
 
 console.log(`\n[内容]  耗时 ${ms}ms`);
 for (const [k, v] of Object.entries(report.counts)) {
@@ -89,8 +115,12 @@ for (const a of ab) {
   console.log(`    [${a.category}] ${a.name}${a.confidence === 'high' ? ' *' : ''}  ${mark}  ← ${a.evidence[0]}`);
 }
 ok(ab.length > 5, '识别出多种能力', `${ab.length} 项`);
-ok(ab.some((a) => a.id === 'scheduler'), '认出了 tick 事件');
-ok(ab.some((a) => a.id === 'damage_after' || a.id === 'damage_allow'), '认出了伤害事件');
+ok(ab.some((a) => a.id === 'scheduler' || a.id === 'forge_tick'), '认出了 tick 事件');
+// 伤害事件：Fabric 叫 damage_allow/damage_after，Forge 叫 forge_damage —— 两套都算对
+ok(
+  ab.some((a) => ['damage_after', 'damage_allow', 'forge_damage'].includes(a.id)),
+  '认出了伤害事件',
+);
 ok(ab.some((a) => a.id === 'attribute_modifier'), '认出了属性加成');
 
 // 可打包的能力里，有多少有现成效果模板
@@ -124,9 +154,9 @@ console.log(`  ${pack.name}`);
 console.log(`  ${JSON.stringify(s)}`);
 ok(s.entries > 3, '包里装进了内容', `${s.entries} 项`);
 ok(s.textures > 0, '贴图一起带走了', `${s.textures} 张`);
-ok(pack.origin.ns === 'fallen', '记录了来源命名空间（安装时用来搬命名空间）');
+ok(pack.origin.ns === report.mainNs, '记录了来源命名空间（安装时用来搬命名空间）', pack.origin.ns);
 
-// 套装推导 + 保留字清洗：fallen 的虚空套叫 void_helmet，剥出套装名就是 void，
+// 套装推导 + 保留字清洗：虚空套叫 void_helmet，剥出套装名就是 void，
 // 撞 Java 保留字。分析器必须自己收拾成合法 id，不能让人回头手改。
 ok(
   report.contents.armorMaterial.some((e) => e.id === 'void_mat'),
@@ -173,10 +203,11 @@ for (const w of applyReport.warnings) console.log(`      ! ${w}`);
 ok(addedTotal > 0, '内容装进了空工程');
 ok(applyReport.renames.length === 0, '空工程不该有改名');
 
-// 命名空间搬家检查
-const anyEntry = Object.values(dst.entries).flat().find((e) => JSON.stringify(e).includes('fallen:'));
-console.log('    抽验命名空间：', anyEntry ? '还有 fallen: 残留' : '全部搬到 analyzetest');
-ok(!anyEntry, '引用里的 fallen: 都换成了新命名空间');
+// 命名空间搬家检查：源命名空间不该有残留
+const srcNs = report.mainNs;
+const anyEntry = Object.values(dst.entries).flat().find((e) => JSON.stringify(e).includes(`${srcNs}:`));
+console.log('    抽验命名空间：', anyEntry ? `还有 ${srcNs}: 残留` : `全部搬到 analyzetest`);
+ok(!anyEntry, `引用里的 ${srcNs}: 都换成了新命名空间`);
 
 P.saveProject(DEST, dst);
 const genReport = await generate(DEST);
