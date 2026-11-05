@@ -46,10 +46,10 @@ if (fs.existsSync(path.join(DST, '.studio', 'project.json'))) {
 console.log('\n[1] 从 testmod 捕获一套');
 
 // testmod 里得有内容才能捕获。clone 下来第一次跑，
-// 里面是空的 —— 先用 smoke 灌一批，省得让人手动准备。
+// 里面是空的（甚至工程都还没建）—— 先用 smoke 灌一批，省得让人手动准备。
 {
-  const probe = P.loadProject(SRC);
-  const hasSword = (probe.entries?.item || []).some((e) => e.id === 'ruby_sword');
+  const hasSword = P.isProject(SRC)
+    && (P.loadProject(SRC).entries?.item || []).some((e) => e.id === 'ruby_sword');
   if (!hasSword) {
     console.log('    testmod 是空的，先跑一遍 smoke 灌内容');
     const { execFileSync } = await import('node:child_process');
