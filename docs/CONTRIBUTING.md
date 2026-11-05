@@ -45,6 +45,35 @@ node tests/forge.mjs --build
 
 跑测试前先把服务起在 `4173`（`uitest.mjs` 默认连这个端口）。
 
+### 关于测试用的样本 jar
+
+`analyze` / `inspect` 这两个用例需要「一个真实的第三方 mod jar」才能跑 ——
+分析器得真的去读它的元数据、class 常量池、资源文件。
+
+仓库自带一个：`tests/fixtures/samplemod-0.1.0.jar`。
+它是用 `tools/make-sample-mod.mjs` 现场造的，内容够全：
+
+- 10 个物品、5 个方块、8 个配方、1 条矿脉、2 个进度
+- 2 个数据驱动附魔、2 个状态效果（26.x 的 `data/<ns>/enchantment/` 布局）
+- 3 个 class，常量池里带 Fabric 与 Forge 两套事件回调名
+- 一份 `-sources.jar`（带 `.java`），用来测「发布包 vs 源码包」的差别
+
+想换成自己的 jar 来测：
+
+```bash
+node tests/analyze.mjs /path/to/your-mod.jar
+# 或
+MCSTUDIO_SAMPLE_JAR=/path/to/your-mod.jar node tests/analyze.mjs
+```
+
+断言里的 mod id 不写死 —— 换任何 jar 来跑都成立。
+
+样本不在了可以重新造：
+
+```bash
+node tools/make-sample-mod.mjs
+```
+
 ## 代码约定
 
 - **引擎不碰 DOM**。`core/` 下全是纯 Node 模块，界面在 `ui/`。

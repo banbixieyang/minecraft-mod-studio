@@ -166,6 +166,10 @@ node tests/tutorial.mjs                   # 上手入口：首页三卡 → 知�
 
 `--build` 的用例会真跑 Gradle，需要对应目标的 JDK（Fabric 26.3 → 25，Forge 1.20.1 → 17）。
 
+`analyze` / `inspect` 需要一个真实的 mod jar 当样本，仓库自带一个
+（`tests/fixtures/samplemod-0.1.0.jar`，用 `node tools/make-sample-mod.mjs` 造的）。
+想测自己的 jar：`node tests/analyze.mjs /path/to/your-mod.jar`。
+
 ## 许可
 
 MIT，见 [`LICENSE`](LICENSE)。
