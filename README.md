@@ -1,13 +1,78 @@
 # MC Studio
 
-Minecraft 模组可视化编辑器。表单填内容 → 一键出 jar。
+Minecraft 模组可视化编辑器。**表单填内容 → 一键出 jar。**
 零 npm 依赖，只用 Node 标准库。
+
+> 不会写 Java 也能做出带物品、方块、配方、矿物生成的 mod；
+> 会写代码的人可以在钩子里插自己的逻辑，少写一堆样板。
+
+![首屏](docs/screenshots/01-首屏.png)
+
+## 快速开始
 
 ```bash
 node studio.mjs start
 ```
 
-浏览器打开 `http://127.0.0.1:4173` 即可。
+浏览器打开 `http://127.0.0.1:4173` 即可。**不需要 npm install**（本项目零依赖）。
+
+首次进入点首页三张上手卡之一，跟着走就行：
+
+| 你想干嘛 | 看哪张卡 |
+|---|---|
+| 做一个自己的 mod | ① 从零到出 jar |
+| 拆解别人的 mod | ② 导入 → 研究 → 改数值 |
+| 系统了解一遍 | ③ 完整使用手册 |
+
+## 它能做什么
+
+**做内容** —— 物品、方块、配方、矿物生成、工具材质、盔甲材质、进度，
+每种都有中文表单和实时贴图预览。改 id、贴图、属性，全是所见即所得。
+
+**做校验** —— 生成前自动检查：id 重复、引用了不存在的材质、配方格式不合法，
+一次性把问题列全，不用一次次试错。
+
+**出 jar** —— 一键调 Gradle 真编译（Fabric 26.3 用 JDK 25，Forge 1.20.1 用 JDK 17），
+日志实时滚，成功后可直接部署到客户端 mods 目录。
+
+![校验](docs/screenshots/09-校验.png)
+
+**复用** —— 做好的内容和代码钩子打包成 `.mcpkg.json` 存起来，
+下个工程一键装进去，id 撞了自动改名并同步所有引用。
+
+![效果库](docs/screenshots/16-效果库.png)
+
+**拆别人的 mod** —— 把别人的 jar **拖进面板**就能解析：
+读出它有什么内容、挂了哪些事件、依赖谁，勾选后转成包直接复用。
+支持 Fabric / Quilt / Forge / NeoForge / 老 `mcmod.info`，
+带签名的、内嵌 jar 的、中文文件名的都能读。
+
+![分析报告](docs/screenshots/23-分析报告.png)
+
+**学得会** —— 内置知识库（指南 / 速查 / 任务卡）可搜可跳，
+标注了适用平台和证据等级；AI 助手读得到这些内容，流式回答，
+问 Forge 工程不会再得到 26.3 的写法。
+
+![学习中心](docs/screenshots/25-学习中心.png)
+
+## 目标平台
+
+新建工程时在欢迎页下拉里选目标，已内置两个：
+
+| 目标 id | 加载器 | MC | JDK | 构建 | 真编译验证 |
+|---|---|---|---|---|---|
+| `fabric-26.3` | Fabric Loader 0.19.5 | 26.3 | 25 | Loom + Gradle 9.5.1 | `tests/cookbook.mjs --build` |
+| `forge-1.20.1` | Forge 47.4.0 | 1.20.1 | 17 | ForgeGradle 6.x + Gradle 8.8 | `tests/forge.mjs --build` |
+
+工程把选中的目标完整写进 `.studio/project.json` 的 `target`（含 `id` 与适配器专属字段）。
+老工程只有 `platform + mcVersion`，加载时会自动补 `id`。
+
+**加一个目标**只需写 `core/target/<id>/adapter.mjs` 并在 `core/target/registry.mjs` 登记一行。
+版本方言（`models/item` vs `items`、`recipes` vs `recipe`、`loot_tables` vs `loot_table`、
+盔甲贴图路径、配方 `result` 形状……）由生成器按适配器的 `features.resourceFormat` 分派，
+内容模块不需要判断版本号。细节见 [`docs/module-guide.md`](docs/module-guide.md)。
+
+## 文档
 
 - **用户手册**：[`docs/README.md`](docs/README.md)
 - **完整手册**（八章 + 速查表，与应用内学习中心同源）：[`docs/guides/00-使用手册.md`](docs/guides/00-使用手册.md)
@@ -15,6 +80,8 @@ node studio.mjs start
 - **模块开发 / 加新版本**：[`docs/module-guide.md`](docs/module-guide.md)
 - **复用与分析**（效果库、包、导入别人的 mod）：[`docs/reuse-and-analysis.md`](docs/reuse-and-analysis.md)
 - **知识库与 AI 助手**：[`docs/knowledge-and-ai.md`](docs/knowledge-and-ai.md)
+
+应用内的「学习」面板能搜到以上全部内容 —— 不用离开工具就能查。
 
 ## 目录
 
@@ -42,23 +109,6 @@ docs/                  文档
 引擎和界面是彻底分开的：`studio.mjs` 的每个命令都直接调引擎，
 界面只是换了个壳。要迁到 Electron / VSCode / CI 都只换壳不动引擎。
 
-## 目标平台
-
-新建工程时在欢迎页下拉里选目标，已内置两个：
-
-| 目标 id | 加载器 | MC | JDK | 构建 | 真编译验证 |
-|---|---|---|---|---|---|
-| `fabric-26.3` | Fabric Loader 0.19.5 | 26.3 | 25 | Loom + Gradle 9.5.1 | `tests/cookbook.mjs --build` |
-| `forge-1.20.1` | Forge 47.4.0 | 1.20.1 | 17 | ForgeGradle 6.x + Gradle 8.8 | `tests/forge.mjs --build` |
-
-工程把选中的目标完整写进 `.studio/project.json` 的 `target`（含 `id` 与适配器专属字段）。
-老工程只有 `platform + mcVersion`，加载时会自动补 `id`。
-
-**加一个目标**只需写 `core/target/<id>/adapter.mjs` 并在 `core/target/registry.mjs` 登记一行。
-版本方言（`models/item` vs `items`、`recipes` vs `recipe`、`loot_tables` vs `loot_table`、
-盔甲贴图路径、配方 `result` 形状……）由生成器按适配器的 `features.resourceFormat` 分派，
-内容模块不需要判断版本号。细节见 [`docs/module-guide.md`](docs/module-guide.md)。
-
 ## 复用与分析
 
 顶栏有两个整屏面板：
@@ -78,7 +128,7 @@ docs/                  文档
 顶栏的 **学习** 和 **AI** 是两个整屏面板，解决的是「不会写 Java 的人怎么把想法做成能编译的代码」
 和「会写的人怎么少翻文档」。
 
-- **学习** —— 内置知识库：5 篇指南、6 篇速查、8 张任务卡，每篇都标了 `platform` 与证据等级。
+- **学习** —— 内置知识库：7 篇指南、速查、任务卡，每篇都标了 `platform` 与证据等级。
   Fabric 26.3 部分在本机实编验证；Forge 1.20.1 部分由官方 MDK 解包 + `javap` 复核 +
   ForgeGradle 真编译背书。检索按**章节**而不是按文档，并按当前工程平台加权。
   如果本机装了 MC 开发专家包，会自动挂进来一起搜（那个是全平台的，按平台调权重不硬过滤）。
@@ -109,6 +159,14 @@ node tests/knowledge.mjs                  # 知识库：索引 / 平台加权 / 
 node tests/ai.mjs                         # AI：三家协议（整段+流式）/ 错误分类 / SSE / 平台上下文
 node tests/cookbook.mjs --build           # Fabric 任务卡代码真编译 + 变体符号核对
 node tests/forge.mjs --build              # Forge 1.20.1 骨架 + 2 张 Forge 任务卡真编译
+node tests/generality.mjs                 # 分析器通用性：换任何 mod 都不大面积踩坑
+node tests/docs.mjs                       # 文档一致性：与知识库同源 + 链接全有效
+node tests/tutorial.mjs                   # 上手入口：首页三卡 → 知识库 → 打开对应文档
 ```
 
 `--build` 的用例会真跑 Gradle，需要对应目标的 JDK（Fabric 26.3 → 25，Forge 1.20.1 → 17）。
+
+## 许可
+
+MIT，见 [`LICENSE`](LICENSE)。
+

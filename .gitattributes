@@ -1,0 +1,30 @@
+# 默认按文本处理，仓库里统一存 LF，检出时按平台自动转。
+# 不这么做的话，Windows 上 clone 会看到整个文件都被改动。
+* text=auto eol=lf
+
+# 二进制文件不参与换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.jar binary
+*.zip binary
+*.webp binary
+
+# 明确要求 LF 的文件
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Windows 批处理必须 CRLF，否则跑不起来
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Gradle wrapper 的 jar 是二进制
+gradle/wrapper/gradle-wrapper.jar binary
