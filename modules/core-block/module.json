@@ -1,0 +1,61 @@
+{
+  "id": "core-block",
+  "name": "方块",
+  "version": "1.0.0",
+  "order": 20,
+  "author": "MC Studio",
+  "description": "矿石、矿物块与普通建筑方块",
+  "contentTypes": [
+    {
+      "id": "block",
+      "label": "方块",
+      "singular": "方块",
+      "group": "内容",
+      "icon": "▩",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 ruby_ore" },
+        { "key": "nameZh", "label": "中文名", "type": "text", "required": true, "placeholder": "红宝石矿石" },
+        { "key": "nameEn", "label": "英文名", "type": "text", "placeholder": "Ruby Ore" },
+        {
+          "key": "kind",
+          "label": "方块类型",
+          "type": "select",
+          "default": "plain",
+          "options": [
+            { "value": "ore", "label": "矿石（挖掉掉材料、给经验）" },
+            { "value": "storage", "label": "矿物块 / 金属块" },
+            { "value": "plain", "label": "普通方块" }
+          ]
+        },
+        { "key": "hardness", "label": "硬度", "type": "number", "default": 3, "step": 0.5, "hint": "石头是 1.5，铁矿石 3，黑曜石 50" },
+        { "key": "resistance", "label": "抗爆性", "type": "number", "default": 3, "step": 0.5 },
+        {
+          "key": "sound",
+          "label": "音效材质",
+          "type": "select",
+          "default": "stone",
+          "options": [
+            { "value": "stone", "label": "石头" },
+            { "value": "deepslate", "label": "深板岩" },
+            { "value": "nether_ore", "label": "下界矿" },
+            { "value": "metal", "label": "金属" },
+            { "value": "amethyst", "label": "紫水晶" },
+            { "value": "gravel", "label": "沙砾" },
+            { "value": "wood", "label": "木头" }
+          ]
+        },
+        { "key": "xpMin", "label": "经验下限", "type": "number", "default": 0, "showIf": [{ "field": "kind", "equals": "ore" }] },
+        { "key": "xpMax", "label": "经验上限", "type": "number", "default": 0, "showIf": [{ "field": "kind", "equals": "ore" }] },
+        { "key": "lightLevel", "label": "发光等级", "type": "number", "default": 0, "min": 0, "max": 15, "showIf": [{ "field": "kind", "equals": "plain" }] },
+        { "key": "requiresTool", "label": "必须用正确工具才能掉落", "type": "checkbox", "default": true },
+        {
+          "key": "drops",
+          "label": "掉落物",
+          "type": "drops",
+          "hint": "不填则掉自己。矿石通常填对应的材料，并勾上时运"
+        },
+        { "key": "texture", "label": "贴图来源", "type": "texture" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+{
+  "id": "core-item",
+  "name": "物品",
+  "version": "1.0.0",
+  "order": 10,
+  "author": "MC Studio",
+  "description": "材料、工具、武器、盔甲与普通物品",
+  "contentTypes": [
+    {
+      "id": "item",
+      "label": "物品",
+      "singular": "物品",
+      "group": "内容",
+      "icon": "◆",
+      "fields": [
+        {
+          "key": "id",
+          "label": "标识符",
+          "type": "id",
+          "required": true,
+          "hint": "游戏内 id，如 ruby_sword。只允许小写字母、数字、下划线"
+        },
+        {
+          "key": "nameZh",
+          "label": "中文名",
+          "type": "text",
+          "required": true,
+          "placeholder": "红宝石剑"
+        },
+        {
+          "key": "nameEn",
+          "label": "英文名",
+          "type": "text",
+          "placeholder": "Ruby Sword"
+        },
+        {
+          "key": "kind",
+          "label": "类型",
+          "type": "select",
+          "default": "material",
+          "options": [
+            { "value": "material", "label": "材料（纯素材，不能使用）" },
+            { "value": "simple", "label": "普通物品" },
+            { "value": "tool", "label": "工具 / 武器" },
+            { "value": "armor", "label": "盔甲" }
+          ]
+        },
+        {
+          "key": "toolType",
+          "label": "工具种类",
+          "type": "select",
+          "default": "sword",
+          "options": [
+            { "value": "sword", "label": "剑（可横扫）" },
+            { "value": "pickaxe", "label": "镐（挖石类）" },
+            { "value": "axe", "label": "斧（砍木、破盾）" },
+            { "value": "shovel", "label": "铲（挖土沙）" },
+            { "value": "hoe", "label": "锄（耕地、采叶）" }
+          ],
+          "showIf": [{ "field": "kind", "equals": "tool" }]
+        },
+        {
+          "key": "materialMode",
+          "label": "材质来源",
+          "type": "select",
+          "default": "preset",
+          "options": [
+            { "value": "preset", "label": "用原版材质（木/石/铁/金/钻石/下界合金）" },
+            { "value": "custom", "label": "用自建材质（在「材质」页创建）" }
+          ],
+          "showIf": [{ "field": "kind", "equals": "tool" }]
+        },
+        {
+          "key": "materialPreset",
+          "label": "原版材质",
+          "type": "select",
+          "default": "diamond",
+          "options": [
+            { "value": "wood", "label": "木（59 耐久）" },
+            { "value": "stone", "label": "石（131）" },
+            { "value": "copper", "label": "铜（190）" },
+            { "value": "iron", "label": "铁（250）" },
+            { "value": "gold", "label": "金（32，挖得快）" },
+            { "value": "diamond", "label": "钻石（1561）" },
+            { "value": "netherite", "label": "下界合金（2031）" }
+          ],
+          "showIf": [
+            { "field": "kind", "equals": "tool" },
+            { "field": "materialMode", "equals": "preset" }
+          ]
+        },
+        {
+          "key": "tier",
+          "label": "自定义材质",
+          "type": "ref",
+          "refType": "tier",
+          "showIf": [
+            { "field": "kind", "equals": "tool" },
+            { "field": "materialMode", "equals": "custom" }
+          ]
+        },
+        {
+          "key": "attackDamage",
+          "label": "攻击伤害加成",
+          "type": "number",
+          "step": 0.5,
+          "hint": "留空用该工具种类的默认值：剑 3 / 镐 1 / 斧 6 / 铲 1.5 / 锄 -2",
+          "showIf": [{ "field": "kind", "equals": "tool" }]
+        },
+        {
+          "key": "attackSpeed",
+          "label": "攻击速度",
+          "type": "number",
+          "step": 0.1,
+          "hint": "留空用默认：剑 -2.4 / 镐 -2.8 / 斧 -3.2 / 铲 -3.0 / 锄 0",
+          "showIf": [{ "field": "kind", "equals": "tool" }]
+        },
+        {
+          "key": "armorSlot",
+          "label": "盔甲部位",
+          "type": "select",
+          "default": "helmet",
+          "options": [
+            { "value": "helmet", "label": "头盔" },
+            { "value": "chestplate", "label": "胸甲" },
+            { "value": "leggings", "label": "护腿" },
+            { "value": "boots", "label": "靴子" }
+          ],
+          "showIf": [{ "field": "kind", "equals": "armor" }]
+        },
+        {
+          "key": "armorMaterial",
+          "label": "盔甲材质",
+          "type": "ref",
+          "refType": "armorMaterial",
+          "hint": "决定防御力、耐久、韧性。没有合适的就去「材质」页建一个",
+          "showIf": [{ "field": "kind", "equals": "armor" }]
+        },
+        {
+          "key": "rarity",
+          "label": "稀有度",
+          "type": "select",
+          "default": "common",
+          "options": [
+            { "value": "common", "label": "普通（白色）" },
+            { "value": "uncommon", "label": "少见（黄色）" },
+            { "value": "rare", "label": "稀有（青色）" },
+            { "value": "epic", "label": "史诗（品红）" }
+          ]
+        },
+        {
+          "key": "stacksTo",
+          "label": "最大堆叠",
+          "type": "number",
+          "default": 64,
+          "min": 1,
+          "max": 64
+        },
+        {
+          "key": "fireResistant",
+          "label": "抗火（丢进岩浆不烧毁）",
+          "type": "checkbox",
+          "default": false
+        },
+        {
+          "key": "tooltip",
+          "label": "说明文本",
+          "type": "list",
+          "hint": "每行一条，显示在物品说明里。用于写机制说明"
+        },
+        {
+          "key": "texture",
+          "label": "贴图来源",
+          "type": "texture",
+          "hint": "可以用原版贴图改色，也可以自己画"
+        }
+      ]
+    }
+  ]
+}

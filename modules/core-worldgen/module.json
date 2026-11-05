@@ -1,0 +1,86 @@
+{
+  "id": "core-worldgen",
+  "name": "世界生成",
+  "version": "1.0.0",
+  "order": 40,
+  "author": "MC Studio",
+  "description": "矿物在三个维度里的生成规则",
+  "contentTypes": [
+    {
+      "id": "worldgen",
+      "label": "矿物生成",
+      "singular": "生成规则",
+      "group": "世界",
+      "icon": "◈",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 ruby_ore_generation" },
+        {
+          "key": "dimension",
+          "label": "维度",
+          "type": "select",
+          "default": "overworld",
+          "options": [
+            { "value": "overworld", "label": "主世界" },
+            { "value": "nether", "label": "下界" },
+            { "value": "end", "label": "末地" }
+          ]
+        },
+        {
+          "key": "overworldBlock",
+          "label": "石头层方块",
+          "type": "text",
+          "placeholder": "ruby_ore",
+          "hint": "主世界专用。不填则用下面的「方块」",
+          "showIf": [{ "field": "dimension", "equals": "overworld" }]
+        },
+        {
+          "key": "deepslateBlock",
+          "label": "深板岩层方块",
+          "type": "text",
+          "placeholder": "deepslate_ruby_ore",
+          "hint": "主世界专用。没有深板岩变体就留空",
+          "showIf": [{ "field": "dimension", "equals": "overworld" }]
+        },
+        {
+          "key": "block",
+          "label": "方块",
+          "type": "text",
+          "required": true,
+          "placeholder": "undead_ore",
+          "hint": "下界 / 末地填这里。主世界若上面两项都空，也用它"
+        },
+        {
+          "key": "size",
+          "label": "矿脉大小",
+          "type": "number",
+          "default": 6,
+          "min": 4,
+          "max": 32,
+          "hint": "一次生成几个方块。最少 4 —— 小于 4 时 26.3 引擎一个都不生成"
+        },
+        { "key": "count", "label": "每区块尝试次数", "type": "number", "default": 2, "min": 1, "max": 32 },
+        {
+          "key": "rarity",
+          "label": "稀有度（1 / N 区块）",
+          "type": "number",
+          "default": 1,
+          "min": 1,
+          "max": 200,
+          "hint": "1 = 每个区块都尝试；8 = 八分之一区块才尝试一次。越大越稀有"
+        },
+        { "key": "minY", "label": "最低高度", "type": "number", "default": -16, "min": -64, "max": 320 },
+        { "key": "maxY", "label": "最高高度", "type": "number", "default": 64, "min": -64, "max": 320 },
+        {
+          "key": "discardChance",
+          "label": "暴露空气时丢弃概率",
+          "type": "number",
+          "default": 0,
+          "step": 0.1,
+          "min": 0,
+          "max": 1,
+          "hint": "0 = 贴着空气也保留。原版深层矿常用 0.5 让它藏得深"
+        }
+      ]
+    }
+  ]
+}

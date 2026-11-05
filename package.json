@@ -1,0 +1,13 @@
+{
+  "name": "mcstudio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MC Studio - 可视化 Minecraft 模组编辑器，引擎与界面分离，零 npm 依赖",
+  "bin": { "mcstudio": "./studio.mjs" },
+  "scripts": {
+    "start": "node studio.mjs start",
+    "new": "node studio.mjs new"
+  },
+  "engines": { "node": ">=18" }
+}

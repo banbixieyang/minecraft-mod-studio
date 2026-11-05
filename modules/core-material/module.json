@@ -1,0 +1,74 @@
+{
+  "id": "core-material",
+  "name": "材质",
+  "version": "1.0.0",
+  "order": 50,
+  "author": "MC Studio",
+  "description": "工具材质与盔甲材质。一个模块可以同时声明多种内容类型",
+  "contentTypes": [
+    {
+      "id": "tier",
+      "label": "工具材质",
+      "singular": "工具材质",
+      "group": "进阶",
+      "icon": "⚒",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 ruby。工具会引用这个名字" },
+        { "key": "nameZh", "label": "中文名", "type": "text", "required": true, "placeholder": "红宝石" },
+        { "key": "nameEn", "label": "英文名", "type": "text" },
+        { "key": "durability", "label": "耐久", "type": "number", "default": 1561, "min": 1, "max": 100000, "hint": "钻石 1561，下界合金 2031" },
+        { "key": "speed", "label": "挖掘速度", "type": "number", "default": 8, "step": 0.5, "hint": "钻石 8，下界合金 9" },
+        { "key": "attackDamageBonus", "label": "攻击伤害加成", "type": "number", "default": 3, "step": 0.5, "hint": "钻石 3，下界合金 4" },
+        { "key": "enchantmentValue", "label": "附魔能力", "type": "number", "default": 10, "min": 0, "max": 100, "hint": "越高越容易出好附魔。钻石 10，金 22" },
+        {
+          "key": "incorrectFor",
+          "label": "采不动的层",
+          "type": "select",
+          "default": "diamond",
+          "options": [
+            { "value": "stone", "label": "石头级（挖不动铁矿以上）" },
+            { "value": "iron", "label": "铁级" },
+            { "value": "diamond", "label": "钻石级（挖不动黑曜石）" },
+            { "value": "netherite", "label": "下界合金级（几乎全能挖）" }
+          ]
+        },
+        { "key": "repairItems", "label": "维修材料", "type": "list", "hint": "每行一个物品 id，铁砧里用这些东西修工具" }
+      ]
+    },
+    {
+      "id": "armorMaterial",
+      "label": "盔甲材质",
+      "singular": "盔甲材质",
+      "group": "进阶",
+      "icon": "⛨",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 ruby。同时决定贴图文件名" },
+        { "key": "nameZh", "label": "中文名", "type": "text", "required": true, "placeholder": "红宝石" },
+        { "key": "nameEn", "label": "英文名", "type": "text" },
+        { "key": "durability", "label": "耐久基数", "type": "number", "default": 33, "min": 1, "hint": "钻石 33，下界合金 37。会按部位乘以不同系数" },
+        { "key": "defHelmet", "label": "头盔防御", "type": "number", "default": 3, "min": 0, "max": 20 },
+        { "key": "defChest", "label": "胸甲防御", "type": "number", "default": 8, "min": 0, "max": 20 },
+        { "key": "defLegs", "label": "护腿防御", "type": "number", "default": 6, "min": 0, "max": 20 },
+        { "key": "defBoots", "label": "靴子防御", "type": "number", "default": 3, "min": 0, "max": 20 },
+        { "key": "enchantmentValue", "label": "附魔能力", "type": "number", "default": 10, "min": 0, "max": 100 },
+        { "key": "toughness", "label": "韧性", "type": "number", "default": 2, "step": 0.5, "hint": "钻石 2，下界合金 3。降低高伤害攻击的穿透" },
+        { "key": "knockbackResistance", "label": "击退抗性", "type": "number", "default": 0, "step": 0.05, "min": 0, "max": 1 },
+        {
+          "key": "equipSound",
+          "label": "穿戴音效",
+          "type": "select",
+          "default": "diamond",
+          "options": [
+            { "value": "leather", "label": "皮革" },
+            { "value": "chain", "label": "锁链" },
+            { "value": "iron", "label": "铁" },
+            { "value": "gold", "label": "金" },
+            { "value": "diamond", "label": "钻石" },
+            { "value": "netherite", "label": "下界合金" }
+          ]
+        },
+        { "key": "repairItems", "label": "维修材料", "type": "list", "hint": "每行一个物品 id" }
+      ]
+    }
+  ]
+}

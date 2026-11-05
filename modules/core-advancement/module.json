@@ -1,0 +1,105 @@
+{
+  "id": "core-advancement",
+  "name": "进度",
+  "version": "1.0.0",
+  "order": 60,
+  "description": "原版进度（成就）。纯数据驱动，不需要写 Java。这个模块同时是「怎么写自己的模块」的活例子。",
+  "contentTypes": [
+    {
+      "id": "advancement",
+      "label": "进度",
+      "singular": "进度",
+      "group": "扩展",
+      "icon": "★",
+      "generate": "./generate.mjs",
+      "fields": [
+        {
+          "key": "id",
+          "label": "标识符",
+          "type": "id",
+          "required": true,
+          "hint": "如 get_ruby。只允许小写字母、数字、下划线"
+        },
+        {
+          "key": "titleZh",
+          "label": "标题（中文）",
+          "type": "text",
+          "required": true,
+          "placeholder": "拿到红宝石"
+        },
+        {
+          "key": "titleEn",
+          "label": "标题（英文）",
+          "type": "text",
+          "placeholder": "Got a Ruby"
+        },
+        {
+          "key": "descriptionZh",
+          "label": "描述",
+          "type": "textarea",
+          "rows": 2,
+          "placeholder": "挖到第一颗红宝石"
+        },
+        {
+          "key": "icon",
+          "label": "图标物品",
+          "type": "ref",
+          "refType": "item",
+          "hint": "留空则用第一个物品当图标"
+        },
+        {
+          "key": "triggerItem",
+          "label": "获得什么触发",
+          "type": "ref",
+          "refType": "item",
+          "hint": "玩家背包里出现这个物品时点亮。留空则只能靠命令发放"
+        },
+        {
+          "key": "frame",
+          "label": "边框样式",
+          "type": "select",
+          "default": "task",
+          "options": [
+            { "value": "task", "label": "普通（方形）" },
+            { "value": "goal", "label": "目标（圆角）" },
+            { "value": "challenge", "label": "挑战（带刺）" }
+          ]
+        },
+        {
+          "key": "parent",
+          "label": "父进度",
+          "type": "text",
+          "placeholder": "留空则不挂在任何进度下面",
+          "hint": "填另一个进度的标识符，会挂成它的子节点。填 minecraft:story/root 可挂到原版树上"
+        },
+        {
+          "key": "background",
+          "label": "背景图",
+          "type": "select",
+          "default": "minecraft:textures/gui/advancements/backgrounds/stone.png",
+          "showIf": { "field": "parent", "truthy": false },
+          "hint": "只有「根进度」会用到。原版的可见根进度必须有背景，否则游戏直接报错不启动",
+          "options": [
+            { "value": "minecraft:textures/gui/advancements/backgrounds/stone.png", "label": "石头（原版默认）" },
+            { "value": "minecraft:textures/gui/advancements/backgrounds/nether.png", "label": "下界岩" },
+            { "value": "minecraft:textures/gui/advancements/backgrounds/end.png", "label": "末地石" },
+            { "value": "minecraft:textures/gui/advancements/backgrounds/azalea.png", "label": "杜鹃" }
+          ]
+        },
+        {
+          "key": "hidden",
+          "label": "隐藏",
+          "type": "checkbox",
+          "default": false,
+          "hint": "未完成前不显示在进度界面里"
+        },
+        {
+          "key": "announce",
+          "label": "完成后全服公告",
+          "type": "checkbox",
+          "default": true
+        }
+      ]
+    }
+  ]
+}

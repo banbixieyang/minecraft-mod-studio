@@ -1,0 +1,84 @@
+{
+  "id": "core-recipe",
+  "name": "配方",
+  "version": "1.0.0",
+  "order": 30,
+  "author": "MC Studio",
+  "description": "工作台、熔炉、高炉、切石机配方",
+  "contentTypes": [
+    {
+      "id": "recipe",
+      "label": "配方",
+      "singular": "配方",
+      "group": "内容",
+      "icon": "▤",
+      "fields": [
+        { "key": "id", "label": "配方标识符", "type": "id", "required": true, "hint": "仅用于文件名，如 ruby_block_from_shards" },
+        {
+          "key": "mode",
+          "label": "配方类型",
+          "type": "select",
+          "default": "shaped",
+          "options": [
+            { "value": "shaped", "label": "有序合成（工作台 3×3）" },
+            { "value": "shapeless", "label": "无序合成" },
+            { "value": "smelting", "label": "熔炼（熔炉）" },
+            { "value": "blasting", "label": "熔炼（高炉，速度快一倍）" },
+            { "value": "stonecutting", "label": "切石机" }
+          ]
+        },
+        {
+          "key": "grid",
+          "label": "合成网格",
+          "type": "grid9",
+          "hint": "点格子选材料，留空表示不需要。会自动裁掉空白行列",
+          "showIf": [{ "field": "mode", "equals": "shaped" }]
+        },
+        {
+          "key": "ingredients",
+          "label": "材料清单",
+          "type": "list",
+          "hint": "每行一个物品 id，顺序无关",
+          "showIf": [{ "field": "mode", "equals": "shapeless" }]
+        },
+        {
+          "key": "ingredient",
+          "label": "输入物",
+          "type": "text",
+          "placeholder": "fallen:time_ore",
+          "showIf": [{ "field": "mode", "in": ["smelting", "blasting", "stonecutting"] }]
+        },
+        { "key": "result", "label": "产出物", "type": "text", "required": true, "placeholder": "fallen:ruby" },
+        { "key": "count", "label": "产出数量", "type": "number", "default": 1, "min": 1, "max": 64 },
+        {
+          "key": "experience",
+          "label": "经验",
+          "type": "number",
+          "default": 0.1,
+          "step": 0.1,
+          "showIf": [{ "field": "mode", "in": ["smelting", "blasting"] }]
+        },
+        {
+          "key": "cookingTime",
+          "label": "烧制时间（tick）",
+          "type": "number",
+          "default": 200,
+          "hint": "200 tick = 10 秒。高炉通常 100",
+          "showIf": [{ "field": "mode", "in": ["smelting", "blasting"] }]
+        },
+        {
+          "key": "category",
+          "label": "配方书分类",
+          "type": "select",
+          "default": "misc",
+          "options": [
+            { "value": "building", "label": "建筑" },
+            { "value": "equipment", "label": "装备" },
+            { "value": "misc", "label": "杂项" },
+            { "value": "redstone", "label": "红石" }
+          ]
+        }
+      ]
+    }
+  ]
+}
