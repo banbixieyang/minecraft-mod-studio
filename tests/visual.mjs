@@ -317,5 +317,37 @@ console.log('\n[20] 导出自定义积木为库');
   ok(lib.format === LIB_FORMAT, '格式标识正确');
 }
 
+console.log('\n[21] 编译：条件无限嵌套 + 逻辑组合');
+{
+  ensureBuiltin();
+  const val = (v) => ({ type: 'value', kind: 'number', value: v });
+  const cmp = (a, op, b) => ({ op: 'math.compare', inputs: { a: val(a), b: val(b) }, fields: { op } });
+  // 三层 if 嵌套；条件里嵌 与/非 和数值比较
+  const program = {
+    op: 'event.player_tick', inputs: {}, fields: {}, next: {
+      op: 'flow.if', fields: {}, inputs: {
+        cond: { op: 'logic.and', fields: {}, inputs: {
+          a: cmp(5, '>', 3),
+          b: { op: 'logic.not', fields: {}, inputs: { cond: cmp(1, '<', 2) } },
+        } },
+      },
+      body: [{
+        op: 'flow.if', fields: {}, inputs: { cond: cmp(9, '>=', 2) },
+        body: [{ op: 'player.heal', fields: {}, inputs: { amount: val(2) } }],
+        next: { op: 'player.message', fields: { mode: '聊天栏' }, inputs: { text: { type: 'value', kind: 'text', value: '嵌套成功' } } },
+      }],
+      next: { op: 'player.message', fields: { mode: '聊天栏' }, inputs: { text: { type: 'value', kind: 'text', value: '外层' } } },
+    },
+  };
+  const r = compileProject({ visual: { programs: [program] }, target: { id: 'fabric-26.3' }, meta: { pkg: 'com.example.demo' } }, { targetId: 'fabric-26.3', pkg: 'com.example.demo' });
+  ok(r.errors.length === 0, '编译无错误', r.errors.join('；'));
+  const code = r.files?.[0]?.content || '';
+  let bal = 0, bad = false;
+  for (const c of code) { if (c === '{') bal++; else if (c === '}') { bal--; if (bal < 0) bad = true; } }
+  ok(!bad && bal === 0, '花括号平衡（含嵌套）', `bal=${bal}`);
+  ok((code.match(/if\s*\(/g) || []).length >= 3, '至少有 3 层 if', `${code.match(/if\s*\(/g)?.length} 层`);
+  ok(code.includes('heal') && code.includes('嵌套成功'), '嵌套内层逻辑已编译');
+}
+
 console.log(`\n${failed === 0 ? '全部通过' : `有 ${failed} 项失败`}\n`);
 process.exit(failed ? 1 : 0);

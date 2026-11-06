@@ -19,7 +19,9 @@
  */
 import { api } from './api.js';
 import { el, setChildren, setContent, fill, toast, modal, confirmBox } from './ui.js';
-import { renderBlock, setDefs, getDef, colorOf, DRAG_TYPE } from './visual-blocks.js';
+import {
+  renderBlock, renderChain, setDefs, getDef, colorOf, DRAG_TYPE,
+} from './visual-blocks.js';
 import { makeGuideSteps } from './visual-guide.js';
 
 const V = {
@@ -30,7 +32,8 @@ const V = {
   programs: [],          // 积木程序（模型）
   selectedPath: null,    // 选中积木的模型路径
   targetId: 'fabric-26.3',
-  dragging: null,
+  dragging: null,       // { op, from: 'palette'|'canvas', path }
+  dropPoint: null,      // 当前高亮的连接点
   filter: '',
   openCat: 'event',
   preview: null,
@@ -76,6 +79,11 @@ export function renderVisualPanel(ctx) {
   V.canvasHost = canvas;
   V.sideHost = side;
 
+  // 拖出删除区：跟 Scratch 一样，把积木拖离脚本就丢掉。
+  // 放在 body 上而不是 canvas 里 —— renderCanvas() 会清空 canvas。
+  V.trashHost = el('div.vb-trash', {}, '🗑 拖到这里删除积木');
+  body.append(V.trashHost);
+
   // 入门向导住在左栏最上面 —— 它讲的每一步都是「点左边哪儿」，
   // 放在积木盒上面，用户上下扫一眼就能对照着做。
   V.guideHost = el('div.vb-guide-host');
@@ -85,6 +93,50 @@ export function renderVisualPanel(ctx) {
   canvas.addEventListener('input', onEditInput);
   canvas.addEventListener('change', onEditChange);
   canvas.addEventListener('click', onEditBool);
+
+  // 拖拽：整块画布一层委托。画布频繁重绘，逐块绑定会漏；
+  // 而且连接点跨积木、跨容器，统一在顶层判断兼容性最稳。
+  canvas.addEventListener('dragstart', onDragStart);
+  canvas.addEventListener('dragover', onDragOver);
+  canvas.addEventListener('drop', onDrop);
+  canvas.addEventListener('dragend', onDragEnd);
+  canvas.addEventListener('dragleave', (e) => {
+    if (!canvas.contains(e.relatedTarget)) clearDropPoint();
+  });
+  // 在输入框里选文字时别把整块积木拖走
+  canvas.addEventListener('mousedown', (e) => {
+    const vb = e.target.closest?.('.vb');
+    if (vb && e.target.closest('input,select,button')) {
+      vb.dataset.tempNoDrag = '1';
+      vb.setAttribute('draggable', 'false');
+    }
+  });
+  canvas.addEventListener('mouseup', () => {
+    canvas.querySelectorAll('.vb[data-temp-no-drag]').forEach((n) => {
+      delete n.dataset.tempNoDrag;
+      if (getDef(n.dataset.op)?.shape !== 'hat') n.setAttribute('draggable', 'true');
+    });
+  });
+  V.trashHost.addEventListener('dragover', (e) => {
+    if (!V.dragging || V.dragging.from !== 'canvas') return;
+    e.preventDefault();
+    V.trashHost.classList.add('vb-trash-hot');
+    clearDropPoint();
+  });
+  V.trashHost.addEventListener('dragleave', () => V.trashHost.classList.remove('vb-trash-hot'));
+  V.trashHost.addEventListener('drop', (e) => {
+    e.preventDefault();
+    V.trashHost.classList.remove('vb-trash-hot');
+    const d = V.dragging;
+    if (d?.from === 'canvas' && d.path) {
+      detachAt(d.path);
+      V.selectedPath = null;
+      renderCanvas();
+      renderSide();
+      toast('已删除积木');
+    }
+    V.dragging = null;
+  });
 
   renderSide();
   load();
@@ -329,6 +381,24 @@ function renderPalette() {
   const cats = el('div.vb-cats');
   const kw = V.filter.trim().toLowerCase();
 
+  // 「常用」快捷区：条件判断和循环永远露在外面。
+  // 之前默认只展开「事件」分类，小朋友根本找不到 if —— 这是最常被问到的一点。
+  const byId = new Map();
+  for (const c of V.categories) {
+    for (const b of c.blocks || []) byId.set(b.id, b);
+  }
+  const QUICK_IDS = ['flow.if', 'flow.if_else', 'flow.repeat', 'logic.and', 'math.compare', 'player.message'];
+  const quickList = el('div.vb-quick-list');
+  for (const id of QUICK_IDS) {
+    const b = byId.get(id);
+    if (b) quickList.append(paletteItem(b, 'vb-quick-item'));
+  }
+  const quick = el('div.vb-quick', {},
+    el('div.vb-quick-title', { text: '常用 · 条件与循环' }),
+    quickList,
+    el('div.vb-quick-tip', { text: '拖到积木上下的细线上就能插进去；六边形放条件槽，圆形放数字槽。' }),
+  );
+
   for (const c of V.categories) {
     const blocks = (c.blocks || []).filter((b) => {
       if (!kw) return true;
@@ -361,12 +431,12 @@ function renderPalette() {
   //    setChildren 会把整个 host 清空重建，向导面板（在 host 第一位）会被冲掉。
   //    所以先把向导那个节点摘出来，再按顺序放回去。
   const guide = V.guideHost;
-  host.replaceChildren(...(guide ? [guide, search, cats] : [search, cats]));
+  host.replaceChildren(...(guide ? [guide, search, quick, cats] : [search, quick, cats]));
 }
 
 /** 积木库里的一条积木（点一下加到画布，也能拖） */
-function paletteItem(b) {
-  const item = el('div.vb-palette-item', {
+function paletteItem(b, cls = 'vb-palette-item') {
+  const item = el(`div.${cls}`, {
     draggable: 'true',
     title: b.description || b.label,
     onclick: () => addToCanvas(b),
@@ -387,10 +457,13 @@ function paletteItem(b) {
     e.dataTransfer.setData('text/plain', b.label || b.id);
     e.dataTransfer.effectAllowed = 'copy';
     item.classList.add('vb-dragging');
+    V.canvasHost?.classList.add('vb-drag-now');
   });
   item.addEventListener('dragend', () => {
     item.classList.remove('vb-dragging');
     V.dragging = null;
+    V.canvasHost?.classList.remove('vb-drag-now');
+    V.trashHost?.classList.remove('vb-trash-visible', 'vb-trash-hot');
   });
 
   return item;
@@ -439,29 +512,16 @@ function programCard(prog, index) {
   const hatHost = el('div.vb-program-hat');
   const stackHost = el('div.vb-program-stack');
 
-  const hat = renderBlock(prog, { dragSource: 'canvas', path: String(index) });
+  // 事件帽是程序根，不能拖走；它下面的 next 链才是可编辑的脚本。
+  const hat = renderBlock(prog, { path: String(index), draggable: false });
   hatHost.append(hat);
 
-  // 语句链
-  let cur = prog.next;
-  let i = 0;
-  let guard = 0;
-  while (cur && cur.op && guard++ < 200) {
-    stackHost.append(renderBlock(cur, {
-      dragSource: 'canvas',
-      path: `${index}.next${i ? `.${'next'}` : ''}`,
-    }));
-    // 路径是「连续 next」的写法：0.next.next
-    cur = cur.next;
-    i++;
-  }
-  // 修正路径（上面的写法对第一条 next 是 0.next，之后要逐级 .next）
-  const stackBlocks = stackHost.querySelectorAll(':scope > .vb');
-  let p = `${index}.next`;
-  for (const el2 of stackBlocks) {
-    el2.dataset.path = p;
-    p += '.next';
-  }
+  // 语句链用统一渲染：每条前面有「插这里」连接点，末尾有「接后面」连接点。
+  renderChain(stackHost, prog.next, `${index}.next`, {
+    emptyAt: String(index),
+    emptySlot: 'next',
+    emptyText: '把积木拖到这里',
+  });
 
   card.append(hatHost, stackHost);
 
@@ -484,7 +544,6 @@ function programCard(prog, index) {
   card.append(tools);
 
   card.addEventListener('click', onCanvasClick);
-  setupDrop(card);
   return card;
 }
 
@@ -702,12 +761,15 @@ function makeNode(def) {
 /** 找选中积木里第一个能放下这个值型积木的槽 */
 function findFreeSlot(node, def) {
   const d = getDef(node.op);
-  const accept = def.shape === 'boolean' ? 'boolean' : 'reporter';
+  const wantBool = def.shape === 'boolean';
   for (const i of d?.inputs || []) {
-    if (!i.accept?.includes(accept)) continue;
+    const acc = i.accept || [];
+    // 六边形条件积木只进条件槽；值积木能进任意值槽（数字/文本槽也行，
+    // 跟 Scratch 里圆形积木能塞进圆形输入框一样），但不能进条件槽。
+    if (wantBool && !acc.includes('boolean')) continue;
+    if (!wantBool && acc.includes('boolean')) continue;
     const cur = node.inputs?.[i.name];
-    // 槽里已经有积木就不抢
-    if (cur && cur.op) continue;
+    if (cur && cur.op) continue;   // 槽里已经有积木就不抢
     return { name: i.name };
   }
   return null;
@@ -804,128 +866,296 @@ function fillPreview(body, r) {
   setContent(body, ...items);
 }
 
-/** ---------------- 拖拽 ---------------- */
+/** ---------------- 拖拽（Scratch 连接模型） ---------------- */
 
 /**
- * 给画布装上拖放处理。
+ * 把一次 drop 落点解析成统一描述。
  *
- * 落点三种：
- *   · 参数槽（.vb-input-block）→ 嵌进去
- *   · 容器（.vb-body）→ 加到容器里
- *   · 语句链（.vb-program-stack）→ 接在链尾
+ * 连接点带完整 data-* 时优先用；同时兼容老行为 ——
+ * 直接把 drop 派发到 .vb-body / .vb-program-stack / .vb-input-block 上
+ * （界面测试和向导就是这么模拟拖放的）。
  */
-function setupDrop(card) {
-  const stack = card.querySelector('.vb-program-stack');
+function targetFromEvent(e) {
+  const point = e.target.closest?.('.vb-drop-point');
+  if (point) {
+    const kind = point.dataset.drop === 'insert' ? 'before' : 'append';
+    return {
+      kind,
+      at: point.dataset.at || '',
+      slot: point.dataset.slot || '',
+      el: point,
+    };
+  }
 
-  // 参数槽 / 容器：优先响应（它们在 stack 里面）
-  card.addEventListener('dragover', (e) => {
-    if (!V.dragging) return;
-    const slot = e.target.closest?.('.vb-input-block');
-    const body = e.target.closest?.('.vb-body');
-    if (!slot && !body) return;
+  const slot = e.target.closest?.('.vb-input-block');
+  if (slot) {
+    const owner = slot.closest('.vb');
+    return {
+      kind: 'input',
+      at: slot.dataset.at || owner?.dataset.path || '',
+      input: slot.dataset.input,
+      accept: slot.dataset.accept || 'value',
+      el: slot,
+    };
+  }
+
+  const body = e.target.closest?.('.vb-body');
+  if (body) {
+    return {
+      kind: 'append',
+      at: body.closest('.vb')?.dataset.path || '',
+      slot: body.dataset.slot || 'body',
+      el: body,
+    };
+  }
+
+  const stack = e.target.closest?.('.vb-program-stack');
+  if (stack) {
+    const idx = Number(stack.closest('.vb-program')?.dataset.programIndex);
+    const prog = V.programs[idx];
+    if (!prog) return null;
+    // 找链尾的**模型路径**（非空链），空链则指向程序根的 next
+    let cur = prog.next;
+    let p = `${idx}.next`;
+    let tail = '';
+    let guard = 0;
+    while (cur && cur.op && guard++ < 300) {
+      tail = p;
+      cur = cur.next;
+      p += '.next';
+    }
+    return tail
+      ? { kind: 'append', at: tail, slot: '', el: stack }
+      : { kind: 'append', at: String(idx), slot: 'next', el: stack };
+  }
+  return null;
+}
+
+/**
+ * 解析落点，带「最近连接」吸附。
+ * Scratch 的 ConnectionDB 会按空间距离找最近的兼容连接，
+ * 这里用 DOM 矩形做同样的近似：没精确落在细线上时，吸到最近的连接点。
+ */
+function resolveTarget(e) {
+  const direct = targetFromEvent(e);
+  if (direct) return direct;
+  if (!e.clientY || !V.canvasHost) return null;
+  let best = null;
+  let bestD = Infinity;
+  for (const n of V.canvasHost.querySelectorAll('.vb-drop-point')) {
+    const r = n.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > window.innerHeight) continue;
+    const dy = Math.abs((r.top + r.bottom) / 2 - e.clientY);
+    const dx = e.clientX < r.left ? r.left - e.clientX : (e.clientX > r.right ? e.clientX - r.right : 0);
+    const d = dy + dx * 0.5;
+    if (d < bestD) { bestD = d; best = n; }
+  }
+  if (!best || bestD > 120) return null;
+  return targetFromEvent({ target: best });
+}
+
+/** 类型检查：形状决定能不能连（跟 Scratch 的 check_ 数组一个意思） */
+function dropIssue(def, target, drag) {
+  if (!target) return null;
+  // 不能把积木拖进它自己或自己的子孙里（会成环）
+  if (drag?.from === 'canvas' && drag.path) {
+    const p = drag.path;
+    const at = String(target.at || '');
+    if (at === p || at.startsWith(`${p}.`) || at.startsWith(`${p}:`)) {
+      return '不能把积木拖进它自己里面';
+    }
+  }
+  if (target.kind === 'input') {
+    if (def.shape !== 'reporter' && def.shape !== 'boolean') return '值槽里只能放值积木或条件积木';
+    if (def.shape === 'boolean' && target.accept !== 'boolean') return '六边形条件积木只能放进条件槽';
+    if (def.shape === 'reporter' && target.accept === 'boolean') return '这个槽要放条件积木（六边形）';
+    return null;
+  }
+  if (def.shape === 'hat') return '事件帽只能作为一段程序的起点';
+  if (def.shape !== 'stack') return '语句链上只能放语句积木';
+  return null;
+}
+
+/** 高亮当前可放置的连接点 */
+function setDropPoint(node) {
+  if (V.dropPoint === node) return;
+  clearDropPoint();
+  V.dropPoint = node;
+  node?.classList.add('vb-drop-active');
+}
+
+function clearDropPoint() {
+  V.dropPoint?.classList.remove('vb-drop-active');
+  V.dropPoint = null;
+  V.canvasHost?.querySelectorAll('.vb-drop-active').forEach((n) => n.classList.remove('vb-drop-active'));
+}
+
+function onDragStart(e) {
+  const vb = e.target.closest?.('.vb');
+  if (!vb || !V.canvasHost?.contains(vb)) return;
+  const path = vb.dataset.path;
+  if (!path || !vb.dataset.op) return;
+  // 事件帽是程序根，拖走等于删整段程序 —— 不给拖，用卡片上的 ✕
+  const def = getDef(vb.dataset.op);
+  if (def?.shape === 'hat') { e.preventDefault(); return; }
+  V.dragging = { op: vb.dataset.op, from: 'canvas', path };
+  e.dataTransfer.setData(DRAG_TYPE, vb.dataset.op);
+  e.dataTransfer.effectAllowed = 'move';
+  vb.classList.add('vb-dragging');
+  V.trashHost?.classList.add('vb-trash-visible');
+  V.canvasHost?.classList.add('vb-drag-now');
+}
+
+function onDragOver(e) {
+  // dragover 阶段浏览器不给读 dataTransfer 内容，所以靠 dragstart 记下的 op；
+  // 测试/外部直接派发 dragover 时退化成尝试读取。
+  const op = V.dragging?.op || e.dataTransfer.getData?.(DRAG_TYPE) || '';
+  const def = getDef(op);
+  if (!def) return;
+  const target = resolveTarget(e);
+  if (!target) { clearDropPoint(); return; }
+  const drag = V.dragging || { from: 'palette', op };
+  if (dropIssue(def, target, drag)) { clearDropPoint(); return; }
+  e.preventDefault();
+  e.dataTransfer.dropEffect = drag.from === 'canvas' ? 'move' : 'copy';
+  setDropPoint(target.el);
+}
+
+function onDrop(e) {
+  const op = e.dataTransfer.getData(DRAG_TYPE) || V.dragging?.op || '';
+  if (!op) return;
+  const def = getDef(op);
+  const target = resolveTarget(e);
+  if (!def || !target) return;
+  const drag = (V.dragging?.from === 'canvas' && V.dragging.path)
+    ? V.dragging
+    : { from: 'palette', op };
+
+  const issue = dropIssue(def, target, drag);
+  if (issue) {
     e.preventDefault();
-    e.stopPropagation();
-    (slot || body).classList.add('vb-drop-target');
-  });
-
-  card.addEventListener('dragleave', (e) => {
-    for (const el2 of card.querySelectorAll('.vb-drop-target')) {
-      if (!el2.contains(e.relatedTarget)) el2.classList.remove('vb-drop-target');
-    }
-  });
-
-  card.addEventListener('drop', (e) => {
-    const op = e.dataTransfer.getData(DRAG_TYPE);
-    if (!op) return;
-    const def = getDef(op);
-    if (!def) return;
-
-    const slot = e.target.closest?.('.vb-input-block');
-    const body = e.target.closest?.('.vb-body');
-
-    if (slot) {
-      e.preventDefault();
-      e.stopPropagation();
-      for (const el2 of card.querySelectorAll('.vb-drop-target')) el2.classList.remove('vb-drop-target');
-      // 槽所属的积木
-      const owner = slot.closest('.vb');
-      const ownerPath = owner?.dataset.path;
-      const ownerNode = nodeAt(ownerPath);
-      const name = slot.parentElement?.dataset?.input || slot.dataset.input;
-      if (!ownerNode || !name) return;
-      if (def.shape === 'reporter' || def.shape === 'boolean') {
-        // 值型积木放值槽
-        const d = getDef(ownerNode.op);
-        const inp = (d?.inputs || []).find((i) => i.name === name);
-        if (inp && !inp.accept?.includes(def.shape === 'boolean' ? 'boolean' : 'reporter')) {
-          toast(`这个槽只接${inp.accept?.includes('boolean') ? '条件' : '值'}积木`);
-          return;
-        }
-        ownerNode.inputs[name] = makeNode(def);
-      } else {
-        toast('这个槽放不下语句积木');
-        return;
-      }
-      V.dragging = null;
-      renderCanvas();
-      renderSide();
-      return;
-    }
-
-    if (body) {
-      e.preventDefault();
-      e.stopPropagation();
-      for (const el2 of card.querySelectorAll('.vb-drop-target')) el2.classList.remove('vb-drop-target');
-      if (def.shape !== 'stack') {
-        toast('容器里只放语句积木');
-        return;
-      }
-      const owner = body.closest('.vb');
-      const ownerNode = nodeAt(owner?.dataset.path);
-      const slotName = body.dataset.slot;
-      if (!ownerNode) return;
-      if (!Array.isArray(ownerNode[slotName])) ownerNode[slotName] = [];
-      ownerNode[slotName].push(makeNode(def));
-      V.dragging = null;
-      renderCanvas();
-      renderSide();
-      return;
-    }
-  });
-
-  // 语句链：落在空白处 → 接到链尾
-  stack?.addEventListener('dragover', (e) => {
-    if (!V.dragging) return;
-    if (e.target.closest?.('.vb-input-block') || e.target.closest?.('.vb-body')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = V.dragging.from === 'palette' ? 'copy' : 'move';
-    stack.classList.add('vb-drop-target');
-  });
-  stack?.addEventListener('dragleave', (e) => {
-    if (e.target === stack) stack.classList.remove('vb-drop-target');
-  });
-  stack?.addEventListener('drop', (e) => {
-    if (e.target.closest?.('.vb-input-block') || e.target.closest?.('.vb-body')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    stack.classList.remove('vb-drop-target');
-    const op = e.dataTransfer.getData(DRAG_TYPE);
-    if (!op) return;
-    const def = getDef(op);
-    if (!def) return;
-    if (def.shape !== 'stack') {
-      toast('语句链上只放语句积木');
-      return;
-    }
-    const prog = V.programs[Number(card.dataset.programIndex)];
-    if (!prog) return;
-    const tail = tailOf(prog);
-    if (tail) tail.next = makeNode(def);
-    else prog.next = makeNode(def);
+    toast(issue, 'warn');
+    clearDropPoint();
     V.dragging = null;
-    renderCanvas();
-    renderSide();
-  });
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  clearDropPoint();
+
+  // ⚠️ 移动积木时，摘除会改变模型路径。所以先把落点解析成**对象引用**，
+  //    再摘除，最后用引用拼接 —— 不能摘完再按旧路径找目标。
+  const resolved = {
+    kind: target.kind,
+    slot: target.slot,
+    inputName: target.input,
+    beforeNode: target.kind === 'before' ? nodeAt(target.at) : null,
+    beforeInfo: target.kind === 'before' ? parentOf(target.at) : null,
+    appendNode: (target.kind === 'append' && !target.slot) ? nodeAt(target.at) : null,
+    hostNode: (target.kind === 'append' && target.slot) ? nodeAt(target.at) : null,
+    inputOwner: target.kind === 'input' ? nodeAt(target.at) : null,
+  };
+
+  let node;
+  if (drag.from === 'canvas') {
+    node = detachAt(drag.path);
+    if (!node) { V.dragging = null; return; }
+  } else {
+    node = makeNode(def);
+  }
+
+  let done = false;
+  if (resolved.kind === 'input' && resolved.inputOwner) {
+    resolved.inputOwner.inputs = resolved.inputOwner.inputs || {};
+    resolved.inputOwner.inputs[resolved.inputName] = node;
+    done = true;
+  } else if (resolved.kind === 'before' && resolved.beforeNode && resolved.beforeInfo) {
+    done = insertBeforeNode(resolved.beforeInfo, resolved.beforeNode, node);
+  } else if (resolved.kind === 'append') {
+    done = appendNode(resolved, node);
+  }
+
+  V.dragging = null;
+  V.selectedPath = null;
+  V.canvasHost?.classList.remove('vb-drag-now');
+  V.trashHost?.classList.remove('vb-trash-visible', 'vb-trash-hot');
+  if (!done) toast('这个位置放不下', 'warn');
+  renderCanvas();
+  renderSide();
+}
+
+function onDragEnd() {
+  V.dragging = null;
+  clearDropPoint();
+  V.canvasHost?.classList.remove('vb-drag-now');
+  V.trashHost?.classList.remove('vb-trash-visible', 'vb-trash-hot');
+  V.canvasHost?.querySelectorAll('.vb-dragging').forEach((n) => n.classList.remove('vb-dragging'));
+}
+
+/** 从模型里摘掉一条积木（连同它下面的一串），返回被摘下的节点 */
+function detachAt(path) {
+  const info = parentOf(path);
+  if (!info) return null;
+  if (info.kind === 'next') {
+    const n = info.parent.next;
+    info.parent.next = null;     // 整串一起带走（Scratch 的拖动语义）
+    return n;
+  }
+  if (info.kind === 'input') {
+    const n = info.parent.inputs?.[info.key];
+    info.parent.inputs = info.parent.inputs || {};
+    info.parent.inputs[info.key] = defaultValueFor(info.parent, info.key);
+    return n || null;
+  }
+  if (info.kind === 'body') {
+    const arr = info.parent[info.slot] || [];
+    const n = arr[info.index];
+    arr.splice(info.index, 1);
+    return n || null;
+  }
+  return null;
+}
+
+/** 槽里积木被拖走后恢复成可直接打字的默认值 */
+function defaultValueFor(owner, key) {
+  const d = getDef(owner?.op);
+  const inp = (d?.inputs || []).find((i) => i.name === key);
+  if (inp?.accept?.includes('boolean')) return { type: 'value', kind: 'boolean', value: false };
+  return { type: 'value', kind: inp?.kind || 'text', value: inp?.default ?? '' };
+}
+
+/** 插到某条语句之前 */
+function insertBeforeNode(info, beforeNode, node) {
+  const tail = tailOf(node);
+  if (info.kind === 'next') {
+    info.parent.next = node;
+    tail.next = beforeNode;
+    return true;
+  }
+  if (info.kind === 'body') {
+    const arr = info.parent[info.slot] || (info.parent[info.slot] = []);
+    const i = arr.indexOf(beforeNode);
+    if (i < 0) return false;
+    arr[i] = node;
+    tail.next = beforeNode;
+    return true;
+  }
+  return false;
+}
+
+/** 接到链尾 / 放进空容器 / 放进空程序 */
+function appendNode(resolved, node) {
+  if (resolved.slot) {
+    const host = resolved.hostNode;
+    if (!host) return false;
+    if (resolved.slot === 'next') { host.next = node; return true; }
+    if (!Array.isArray(host[resolved.slot])) host[resolved.slot] = [];
+    host[resolved.slot].push(node);
+    return true;
+  }
+  if (!resolved.appendNode) return false;
+  resolved.appendNode.next = node;
+  return true;
 }
 
 /** ---------------- 代码造积木（G5） ---------------- */

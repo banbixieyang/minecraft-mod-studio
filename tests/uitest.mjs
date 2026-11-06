@@ -1817,6 +1817,173 @@ try {
   } else {
     problems.push({ kind: '转换', text: '顶栏找不到「转换」按钮' });
   }
+
+  // ---------- Scratch 式拖拽与任意嵌套 ----------
+  // 覆盖：常用区露出 if / 画布积木可拖 / 插到链中间 / 值槽嵌积木 /
+  //       if 里再套 if / 类型不兼容被拒 / 拖出删除 / 嵌套结构进 Java
+  if (await clickByText('.app-bar button', '积木')) {
+    await sleep(1000);
+    const sc = await evaluate(`(async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const q = (s) => document.querySelector(s);
+      const qa = (s) => [...document.querySelectorAll(s)];
+      const DT = 'application/x-mcstudio-block';
+      const out = {};
+
+      // 连接点 / 形状 / 常用区
+      out.quick = qa('.vb-quick-item').map(n => n.dataset.op);
+      out.insertPoints = qa('.vb-drop-point.vb-insert').length;
+      out.appendPoints = qa('.vb-drop-point.vb-append').length;
+      out.draggable = q('.vb-program-stack > .vb')?.getAttribute('draggable');
+      out.valueSlots = qa('.vb-input-block[data-accept]').length;
+
+      // 一次完整拖放：fromEl 为空表示从积木库拖新积木
+      const drag = (fromEl, toEl, op) => {
+        if (!toEl) return false;
+        const dt = new DataTransfer();
+        if (fromEl) {
+          fromEl.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        } else {
+          dt.setData(DT, op);
+        }
+        const r = toEl.getBoundingClientRect();
+        const mk = (type) => new DragEvent(type, {
+          bubbles: true, cancelable: true, dataTransfer: dt,
+          clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+        });
+        toEl.dispatchEvent(mk('dragover'));
+        toEl.dispatchEvent(mk('drop'));
+        if (fromEl) fromEl.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+        return true;
+      };
+
+      const stack = q('.vb-program')?.querySelector('.vb-program-stack');
+      if (!stack) return { ...out, err: '画布上没有程序，先跑 31-积木' };
+      const tailPoint = () => stack.querySelector(':scope > .vb-drop-point.vb-append');
+
+      // 插到链的中间（不是只能接链尾）
+      drag(null, tailPoint(), 'player.heal');
+      await sleep(120);
+      drag(null, tailPoint(), 'player.message');
+      await sleep(120);
+      out.chainBefore = qa('.vb-program-stack > .vb').map(n => n.dataset.op);
+      const inserts = qa('.vb-program-stack > .vb-drop-point.vb-insert');
+      if (inserts.length >= 2) {
+        drag(null, inserts[1], 'flow.repeat');
+        await sleep(120);
+        out.chainAfter = qa('.vb-program-stack > .vb').map(n => n.dataset.op);
+        out.insertPos = out.chainAfter.indexOf('flow.repeat');
+      }
+
+      // 数字槽里嵌一个值积木（Scratch 的圆形槽）
+      const heal = qa('.vb-program-stack > .vb').find(n => n.dataset.op === 'player.heal');
+      const amountSlot = heal?.querySelector('.vb-input-block[data-accept="value"]');
+      out.amountSlot = !!amountSlot;
+      if (amountSlot) {
+        drag(null, amountSlot, 'player.health');
+        await sleep(120);
+        out.valueEmbedded = !!q('.vb-input-block > .vb.vb-reporter');
+      }
+
+      // 条件槽里嵌「并且」，并且里再嵌数值比较 —— 两层条件嵌套
+      const ifBlock = qa('.vb-program-stack > .vb').find(n => n.dataset.op === 'flow.if' || n.dataset.op === 'flow.if_else');
+      const condSlot = ifBlock?.querySelector(':scope > .vb-head .vb-input-block[data-accept="boolean"]');
+      out.condSlot = !!condSlot;
+      if (condSlot) {
+        drag(null, condSlot, 'logic.and');
+        await sleep(120);
+        out.condEmbedded = !!q('.vb-input-block > .vb.vb-boolean');
+        const inner = q('.vb-input-block > .vb.vb-boolean .vb-input-block[data-accept="boolean"]');
+        if (inner) {
+          drag(null, inner, 'math.compare');
+          await sleep(120);
+          out.deepCond = !!q('.vb-input-block > .vb.vb-boolean .vb-input-block > .vb.vb-boolean');
+        }
+      }
+
+      // if 的「嘴」里再放一个 if —— C 型容器嵌套
+      const body = q('.vb-program-stack .vb-body');
+      out.body = !!body;
+      if (body) {
+        const before = body.querySelectorAll(':scope > .vb').length;
+        drag(null, body, 'flow.if');
+        await sleep(120);
+        const body2 = q('.vb-program-stack .vb-body');
+        out.bodyNested = !!body2?.querySelector('.vb-body');
+        out.bodyGrew = body2 ? body2.querySelectorAll(':scope > .vb').length > before : false;
+      }
+
+      // 类型检查：语句积木不能塞进值槽
+      const numSlot = q('.vb-program-stack .vb-input-block[data-accept="value"]');
+      if (numSlot) {
+        const before = numSlot.querySelectorAll('.vb-stack').length;
+        drag(null, numSlot, 'player.heal');
+        await sleep(120);
+        const after = qa('.vb-program-stack .vb-input-block[data-accept="value"]').reduce((n, s) => n + s.querySelectorAll('.vb-stack').length, 0);
+        out.typeRejected = before === 0 && after === 0;
+      }
+
+      // 拖动已有积木重排：把最后一条拖到第一条之前
+      const blocks = qa('.vb-program-stack > .vb');
+      if (blocks.length >= 2) {
+        const last = blocks[blocks.length - 1];
+        const lastOp = last.dataset.op;
+        const firstInsert = q('.vb-program-stack > .vb-drop-point.vb-insert');
+        const beforeOrder = qa('.vb-program-stack > .vb').map(n => n.dataset.op).join(',');
+        drag(last, firstInsert, null);
+        await sleep(120);
+        const afterOrder = qa('.vb-program-stack > .vb').map(n => n.dataset.op).join(',');
+        out.moved = afterOrder !== beforeOrder;
+        out.moveHead = qa('.vb-program-stack > .vb')[0]?.dataset.op === lastOp;
+      }
+
+      // 拖出删除
+      const victim = qa('.vb-program-stack > .vb').find(n => n.dataset.op === 'player.message');
+      const trash = q('.vb-trash');
+      if (victim && trash) {
+        const countBefore = qa('.vb-program-stack > .vb[data-op="player.message"]').length;
+        drag(victim, trash, null);
+        await sleep(120);
+        out.deleted = qa('.vb-program-stack > .vb[data-op="player.message"]').length < countBefore;
+      }
+
+      // 编译预览：嵌套结构真的进 Java
+      const prev = qa('.panel-bar button').find(b => b.textContent.includes('编译预览'));
+      if (prev) { prev.click(); await sleep(1800); }
+      out.code = q('.vb-code')?.textContent || '';
+      out.hasNestedIf = (out.code.match(/if\s*\(/g) || []).length >= 2;
+      out.hasReporterValue = out.code.includes('getHealth()');
+      return out;
+    })()`);
+
+    if (sc.err) {
+      problems.push({ kind: 'Scratch 拖拽', text: sc.err });
+    } else {
+      const checks = [
+        ['常用区直接露出 if / if-else / 数值比较',
+          ['flow.if', 'flow.if_else', 'math.compare'].every((id) => sc.quick.includes(id))],
+        ['画布积木可拖动', sc.draggable === 'true'],
+        ['有插入连接点与链尾连接点', sc.insertPoints > 0 && sc.appendPoints > 0],
+        ['积木能插到链中间（不是只能接链尾）', sc.insertPos > 0],
+        ['数字槽能嵌值积木', sc.amountSlot && sc.valueEmbedded],
+        ['条件槽能嵌条件积木', sc.condSlot && sc.condEmbedded],
+        ['条件里还能再套一层条件', sc.deepCond],
+        ['if 的容器里能再放 if', sc.body && sc.bodyNested],
+        ['类型不兼容的拖放被拒绝', sc.typeRejected],
+        ['画布上的积木能拖动重排', sc.moved],
+        ['拖到删除区能删掉积木', sc.deleted],
+        ['编译预览里有嵌套 if', sc.hasNestedIf],
+        ['嵌进槽里的值积木进了 Java', sc.hasReporterValue],
+      ];
+      for (const [name, cond] of checks) {
+        if (cond) record('35-Scratch ' + name, '通过');
+        else problems.push({ kind: 'Scratch 拖拽', text: name + '：没通过 ' + JSON.stringify(sc).slice(0, 400) });
+      }
+    }
+    await clickByText('.panel-bar button', '← 返回');
+  } else {
+    problems.push({ kind: 'Scratch 拖拽', text: '顶栏找不到「积木」按钮' });
+  }
 } finally {
   ws.close();
   child.kill();

@@ -1384,3 +1384,75 @@ pre.code-block {
   .convert-body { grid-template-columns: 1fr; }
   .convert-diff { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   Scratch 式积木：常用区 / 连接点 / 形状 / 拖放反馈
+   形状本身就是类型提示：圆形=值、六边形=条件、缺口凸槽=语句链。
+   ============================================================ */
+
+/* 常用条件与循环，永远露在左栏最上面 */
+.vb-quick {
+  flex: 0 0 auto; margin: 0 8px 10px; padding: 9px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+}
+.vb-quick-title { font-size: 11.5px; font-weight: 700; color: var(--text-2); margin-bottom: 7px; }
+.vb-quick-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.vb-quick-item {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: 7px;
+  background: var(--panel-3); color: var(--text); font-size: 11.5px;
+  cursor: grab; user-select: none;
+}
+.vb-quick-item:hover { border-color: var(--accent); background: var(--accent-soft); }
+.vb-quick-item .vb-palette-icon { font-size: 12px; }
+.vb-quick-tip { margin-top: 7px; font-size: 10.5px; line-height: 1.55; color: var(--muted); }
+
+/* 连接点：每条语句前一条「插这里」，链尾一条「接后面」 */
+.vb-drop-point { border-radius: 4px; transition: background .1s, height .1s; }
+.vb-insert { height: 6px; width: 100%; min-width: 96px; background: transparent; }
+.vb-append {
+  min-height: 20px; min-width: 140px; display: flex; align-items: center;
+  padding: 2px 6px; background: rgba(109, 74, 255, .05);
+}
+.vb-drop-hint { font-size: 10.5px; color: var(--muted); pointer-events: none; }
+.visual-canvas.vb-drag-now .vb-insert { height: 12px; background: rgba(109, 74, 255, .09); }
+.vb-drop-active { background: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent-soft); }
+.vb-drop-active .vb-drop-hint { color: #fff; }
+.vb-input-block.vb-drop-active { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vb-body.vb-drop-active { outline: 2px solid var(--accent); }
+
+/* 语句的上下缺口 / 凸槽（对应 PREVIOUS_STATEMENT / NEXT_STATEMENT） */
+.vb-in-chain { border-radius: 5px; }
+.vb-in-chain::before {
+  content: ''; position: absolute; top: 0; left: 18px; width: 28px; height: 6px;
+  background: var(--bg); border-radius: 0 0 5px 5px; z-index: 2;
+}
+.vb-in-chain::after {
+  content: ''; position: absolute; bottom: -5px; left: 18px; width: 28px; height: 6px;
+  background: var(--vb-color, #5a6472); border-radius: 0 0 5px 5px; z-index: 1;
+}
+/* C 型 / E 型容器的「嘴」 */
+.vb-body {
+  border-left: 4px solid var(--vb-color, #7b8494);
+  border-top: 2px solid var(--vb-color, #7b8494);
+  border-radius: 0 0 0 8px;
+}
+.vb-body-elseBody { border-left-style: dashed; }
+
+/* 值槽：圆形槽放值积木，六边形槽放条件积木 */
+.vb-input-block[data-accept="value"],
+.vb-input-block[data-accept="reporter"] {
+  border: 1px solid rgba(255, 255, 255, .4); border-radius: 999px;
+}
+.vb-input-block[data-accept="boolean"] { border: 1px dashed rgba(255, 255, 255, .75); }
+.vb-dragging { opacity: .42; }
+
+/* 拖出删除区 */
+.vb-trash {
+  position: fixed; right: 320px; bottom: 22px; z-index: 60; display: none;
+  padding: 10px 16px; border-radius: 10px; border: 2px dashed var(--danger);
+  background: var(--danger-soft); color: var(--danger); font-size: 12.5px; font-weight: 600;
+}
+.vb-trash-visible { display: block; }
+.vb-trash-hot { background: var(--danger); color: #fff; border-style: solid; }
+@media (max-width: 980px) { .vb-trash { right: 16px; } }

@@ -1,29 +1,29 @@
 /**
- * 积木的 DOM 渲染。
+ * 积木的 DOM 渲染 —— 按 Scratch 的连接模型组织。
  *
- * 一个积木 = 一个 div，形状分四种：
- *   hat      帽形 —— 程序起点
- *   stack    积木 —— 语句，能接 next
- *   reporter 圆角 —— 值，能塞进 inputs
- *   boolean  六边形 —— 条件，能塞进 inputs
+ * Scratch 有四种连接点（见 scratch-blocks 的 core/connection.js）：
+ *   INPUT_VALUE   值输入口（圆形/方形/六边形凹槽）  ← OUTPUT_VALUE
+ *   OUTPUT_VALUE  值积木的凸头（reporter / boolean）
+ *   NEXT_STATEMENT     语句底下的凸槽              ← PREVIOUS_STATEMENT
+ *   PREVIOUS_STATEMENT 语句顶上的缺口
+ * 另外 C 型积木（if / repeat）有一个「嘴」，if-else 有两个（E 型）。
+ *
+ * 我们照这个模型渲染，但不画 SVG，而是用 DOM 上的连接点标记：
+ *   .vb-insert  语句之前（插到链中间，对应 NEXT/PREVIOUS 配对）
+ *   .vb-append  链的末尾（接在最后一条下面）
+ *   .vb-input-block 值输入口（可嵌值型/条件型积木）
+ *   .vb-body    C 型 / E 型的「嘴」，里面是一条完整语句链
  *
  * ## 数据流（重要）
  *
  * **数据模型是唯一真相源，DOM 只是它的渲染结果。**
- *
- * 每条渲染出来的积木都带一个「模型路径」（data-path），
- * 形如 `0.next.next.inputs.text` —— 指向它在模型里的位置。
- * 用户的任何编辑（改输入框、拖积木、点真/假）都通过路径
- * 找到模型节点并**直接改模型**，然后重绘。
- *
- * 为什么不反过来（改 DOM 再读回）：
- *   改 DOM 再读回，遇到「重绘」就会丢数据 ——
- *   用户改了输入框 → 又加了一条积木 → 重绘从模型拿数据，
- *   而模型里还是旧值，改动凭空消失。
- *   这个坑真的踩过（探针测出来「预览里没有小朋友你好」）。
+ * 每条渲染出来的积木都带一个「模型路径」（data-path），形如
+ * `0.next.next.inputs:cond.inputs:a` —— 能一路指到任意深度的嵌套节点。
+ * 任何编辑都通过路径改模型再重绘；反过来「改 DOM 再读回」在重绘时会丢值
+ * （这个坑真的踩过）。
  */
 
-/** 形状 → CSS 类 */
+/** 形状 → CSS 类（形状本身就是类型提示，跟 Scratch 一样） */
 const SHAPE_CLASS = {
   hat: 'vb-hat',
   stack: 'vb-stack',
@@ -50,10 +50,7 @@ const CATEGORY_COLOR = {
 /** 拖拽载荷的 MIME */
 export const DRAG_TYPE = 'application/x-mcstudio-block';
 
-/**
- * 积木定义表（id → 定义）。
- * 由 visual.js 从后端拉好后塞进来。
- */
+/** 积木定义表（id → 定义），由 visual.js 从后端拉好后塞进来 */
 let defs = new Map();
 
 export function setDefs(list) {
@@ -65,9 +62,39 @@ export function getDef(id) {
   return defs.get(id) || null;
 }
 
-/** 分类颜色 */
 export function colorOf(category) {
   return CATEGORY_COLOR[category] || '#5a6472';
+}
+
+/** 小工具：造元素并挂属性 */
+function h(tag, cls, attrs = {}, children = []) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined || v === null) continue;
+    if (k === 'text') n.textContent = v;
+    else n.setAttribute(k, String(v));
+  }
+  for (const c of children) n.append(c);
+  return n;
+}
+
+/** 拼子路径 */
+export function childPath(parent, seg) {
+  return parent === undefined || parent === null || parent === '' ? seg : `${parent}.${seg}`;
+}
+
+/**
+ * 渲染一个连接点标记。
+ * 属性全部写进 dataset，拖拽引擎读它决定往哪儿放。
+ */
+function dropPoint(kind, attrs, text) {
+  const n = h('div', `vb-drop-point vb-${kind}`, {
+    'data-drop': kind,
+    ...attrs,
+  });
+  if (text) n.append(h('span', 'vb-drop-hint', { text }));
+  return n;
 }
 
 /**
@@ -75,195 +102,207 @@ export function colorOf(category) {
  *
  * @param {object} node 积木实例 { op, inputs, fields, body, elseBody, next }
  * @param {object} opts
- * @param {string}  [opts.path]  模型路径（写进 data-path）
- * @param {string}  [opts.dragSource] 拖拽来源标记（'palette' 或 'canvas'）
- * @returns {HTMLElement}
+ * @param {string}  [opts.path]       模型路径（写进 data-path）
+ * @param {boolean} [opts.draggable]  是否可拖动（默认 true）
+ * @param {boolean} [opts.inChain]    是否处在语句链上（有上缺口/下凸槽）
  */
 export function renderBlock(node, opts = {}) {
   const def = defs.get(node.op);
-  const shell = document.createElement('div');
-  shell.className = `vb ${SHAPE_CLASS[def?.shape] || 'vb-stack'}`;
-  // 颜色优先用后端给的分类色（库的分类也可能带自己的颜色），
-  // 没有就退回前端按分类 id 的映射。
-  const color = def?.color || colorOf(def?.category);
-  shell.style.setProperty('--vb-color', color);
+  const shape = def?.shape || 'stack';
+  const shell = h('div', `vb ${SHAPE_CLASS[shape] || 'vb-stack'}${opts.inChain ? ' vb-in-chain' : ''}`, {
+    'data-op': node.op || '',
+    draggable: opts.draggable === false ? false : true,
+  });
+  shell.style.setProperty('--vb-color', def?.color || colorOf(def?.category));
 
-  // 没实现的积木标灰 —— 让用户知道「这条在当前目标下编译不了」
   if (def && !def.supported) shell.classList.add('vb-unsupported');
-  // 依赖某个 mod 的积木打个角标
   if (def?.requiresMod) {
     shell.classList.add('vb-requires-mod');
     shell.title = `需要安装 ${def.requiresMod} 这个 mod 才能编译`;
   }
+  if (opts.path !== undefined && opts.path !== null) shell.dataset.path = opts.path;
 
-  shell.dataset.op = node.op || '';
-  if (opts.path !== undefined) shell.dataset.path = opts.path;
-  if (opts.dragSource) shell.dataset.dragSource = opts.dragSource;
-
-  // ---------- 积木头（标签 + 参数槽） ----------
-  const head = document.createElement('div');
-  head.className = 'vb-head';
-
-  if (def?.icon) {
-    const icon = document.createElement('span');
-    icon.className = 'vb-icon';
-    icon.textContent = def.icon;
-    head.append(icon);
-  }
-
-  // 标签里带 %name 的占位 —— 那些位置要换成真正的输入控件
-  const parts = splitLabel(def?.label || node.op || '');
-  for (const part of parts) {
+  // ---------- 积木头（标签 + 参数槽 + 菜单） ----------
+  const head = h('div', 'vb-head');
+  if (def?.icon) head.append(h('span', 'vb-icon', { text: def.icon }));
+  for (const part of splitLabel(def?.label || node.op || '')) {
     if (part.text !== undefined) {
-      if (!part.text) continue;
-      const span = document.createElement('span');
-      span.className = 'vb-text';
-      span.textContent = part.text;
-      head.append(span);
-      continue;
+      if (part.text) head.append(h('span', 'vb-text', { text: part.text }));
+    } else {
+      head.append(renderInput(node, (def?.inputs || []).find((i) => i.name === part.name), part.name, opts.path));
     }
-    // %name —— 找对应的输入定义
-    const inp = (def?.inputs || []).find((i) => i.name === part.name);
-    head.append(renderInput(node, inp, part.name));
   }
-
-  // 菜单字段（%mode 之类）—— 放在标签后面
-  for (const f of def?.fields || []) {
-    head.append(renderField(node, f));
-  }
-
+  for (const f of def?.fields || []) head.append(renderField(node, f));
   shell.append(head);
 
-  // ---------- 容器（body 槽） ----------
-  // bodySlots 由后端给出（registry.mjs 的 serializeBlock 算好了）：
-  // 显式声明的优先，没声明就从 java 模板里的 %body / %elseBody 标记推。
-  const slots = def?.bodySlots?.length ? def.bodySlots : [];
-  for (const slotName of slots) {
-    const slot = document.createElement('div');
-    slot.className = `vb-body vb-body-${slotName}`;
-    slot.dataset.slot = slotName;
+  // ---------- C 型 / E 型容器的「嘴」 ----------
+  // bodySlots 由后端 registry.mjs 算好（显式声明优先，否则从模板 %body 推断）。
+  for (const slotName of def?.bodySlots || []) {
+    const slot = h('div', `vb-body vb-body-${slotName}`, { 'data-slot': slotName });
     const kids = node[slotName] || [];
-    kids.forEach((kid, i) => {
-      slot.append(renderBlock(kid, {
-        dragSource: 'canvas',
-        path: childPath(opts.path, `body:${slotName}:${i}`),
-      }));
+    renderSequence(slot, kids, childPath(opts.path, `body:${slotName}`), {
+      emptyAt: opts.path,
+      emptySlot: slotName,
+      emptyText: slotName === 'elseBody' ? '把「否则」的积木拖到这里' : '把积木拖到这里',
     });
-    // 空容器给一个提示，放得进去
-    if (!kids.length) {
-      const hint = document.createElement('div');
-      hint.className = 'vb-body-hint';
-      hint.textContent = slotName === 'elseBody' ? '放「否则」的积木' : '把积木拖到这里';
-      slot.append(hint);
-    }
     shell.append(slot);
   }
 
   return shell;
 }
 
-/** 拼子路径 */
-function childPath(parent, seg) {
-  return parent === undefined || parent === null ? seg : `${parent}.${seg}`;
+/**
+ * 渲染一条语句链（沿 next 一路走），展平成兄弟 DOM 节点。
+ *
+ * 每条语句前面有一个「插到这里」的连接点，末尾有一个「接在后面」的连接点。
+ * 这样能像 Scratch 一样把积木插进链的**中间**，而不是只能接链尾。
+ *
+ * @param {HTMLElement} host   容纳这些节点的容器
+ * @param {object} first       链首节点
+ * @param {string} firstPath   链首的模型路径
+ * @param {object} opts
+ * @param {string} [opts.emptyAt]    链为空时，append 指向的宿主路径
+ * @param {string} [opts.emptySlot]  链为空时，append 写入的字段名（'next' 或容器名）
+ * @param {string} [opts.emptyText]  空链提示
+ * @returns {string} 链尾节点的路径（空链返回 ''）
+ */
+export function renderChain(host, first, firstPath, opts = {}) {
+  let cur = first;
+  let path = firstPath;
+  let guard = 0;
+  let tailPath = '';
+  while (cur && cur.op && guard++ < 300) {
+    host.append(dropPoint('insert', {
+      'data-at': path,
+      'data-kind': 'statement',
+    }));
+    host.append(renderBlock(cur, { path, inChain: true }));
+    tailPath = path;
+    cur = cur.next;
+    path = childPath(path, 'next');
+  }
+  if (!tailPath) {
+    host.append(dropPoint('append', {
+      'data-at': opts.emptyAt ?? '',
+      'data-slot': opts.emptySlot ?? 'next',
+      'data-kind': 'statement',
+    }, opts.emptyText || '把积木拖到这里'));
+  } else {
+    host.append(dropPoint('append', {
+      'data-at': tailPath,
+      'data-kind': 'statement',
+    }));
+  }
+  return tailPath;
+}
+
+/**
+ * 渲染容器里的序列。
+ *
+ * ⚠️ 序列有两种历史形态，都必须支持：
+ *   · 数组本身是序列（每个元素独立）—— 界面往 body 拖积木就是这个形态
+ *   · 第一个元素的 next 链继续往下 —— 反编译器产出的是这个形态
+ * 编译器 compileSequence() 同样兼容两种，这里逐个元素走 next 链渲染。
+ */
+export function renderSequence(host, list, basePath, opts = {}) {
+  const arr = Array.isArray(list) ? list : [];
+  let rendered = 0;
+  arr.forEach((first, i) => {
+    if (!first || !first.op) return;
+    const p = `${basePath}:${i}`;
+    const tail = renderChain(host, first, p, {
+      emptyText: opts.emptyText,
+      emptyAt: opts.emptyAt,
+      emptySlot: opts.emptySlot,
+    });
+    if (tail) rendered++;
+  });
+  if (!rendered) {
+    host.append(dropPoint('append', {
+      'data-at': opts.emptyAt ?? '',
+      'data-slot': opts.emptySlot ?? 'body',
+      'data-kind': 'statement',
+    }, opts.emptyText || '把积木拖到这里'));
+  }
 }
 
 /**
  * 渲染一个输入槽。
  *
- * 槽分三类：
- *   · 值槽（text/number/...）—— 一个小输入框
- *   · 条件槽（accept 含 boolean）—— 空槽，可以放条件积木，也可以点「真/假」
- *   · 值积木槽（accept 含 reporter）—— 空槽，放值型积木
- *
- * ⚠️ 能放积木的槽**永远**要有 .vb-input-block 这个容器 ——
- *    之前只在「槽里已经有积木」时才加这个类，导致空槽根本没法接收拖进来的积木。
+ * 跟 Scratch 一样，**所有值槽都能嵌积木**：
+ *   · 数字/文本槽 → 圆形/方形，放 reporter
+ *   · 条件槽（accept 含 boolean）→ 六边形，放 boolean
+ * 槽里没积木时保留原来的输入框 / 真假按钮（可直接打字），
+ * 一旦拖进积木就被替换掉；把积木拖走会自动恢复默认输入框。
  */
-function renderInput(node, inp, name) {
-  const wrap = document.createElement('span');
-  wrap.className = 'vb-input';
-  wrap.dataset.input = name;
-
-  if (!inp) {
-    // 定义里没这个输入（标签与 inputs 不一致）—— 原样显示占位符
-    wrap.classList.add('vb-input-raw');
-    wrap.textContent = `%${name}`;
-    return wrap;
-  }
+function renderInput(node, inp, name, ownerPath) {
+  const wrap = h('span', 'vb-input', { 'data-input': name });
+  if (!inp) return h('span', 'vb-input vb-input-raw', { text: `%${name}` });
 
   const cur = node.inputs?.[name];
-
-  // ---- 能放积木的槽 ----
   const accept = inp.accept || [];
-  if (accept.includes('boolean') || accept.includes('reporter')) {
-    const isBool = accept.includes('boolean');
-    const holder = document.createElement('span');
-    holder.className = `vb-input-block${isBool ? ' vb-input-bool' : ''}`;
-    holder.dataset.kind = isBool ? 'boolean' : 'reporter';
+  const isBool = accept.includes('boolean');
+  // 条件积木只能放进明确声明 boolean 的槽；值积木能放进任意值槽
+  const acceptAttr = isBool ? 'boolean' : (accept.includes('reporter') ? 'reporter' : 'value');
 
-    if (cur && cur.op) {
-      holder.append(renderBlock(cur, { dragSource: 'canvas' }));
-    } else if (isBool) {
-      // 空条件槽：给一个「真/假」的小按钮，点一下就能切换
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'vb-bool-chip';
-      chip.dataset.input = name;
-      chip.dataset.value = cur?.value === true ? 'true' : 'false';
-      chip.textContent = chip.dataset.value === 'true' ? '真' : '假';
-      holder.append(chip);
-    } else {
-      const ph = document.createElement('span');
-      ph.className = 'vb-slot-empty';
-      ph.textContent = '放积木';
-      holder.append(ph);
-    }
+  const holder = h('span', `vb-input-block${isBool ? ' vb-input-bool' : ''}`, {
+    'data-drop': 'input',
+    'data-at': ownerPath ?? '',
+    'data-input': name,
+    'data-accept': acceptAttr,
+    'data-kind': inp.kind || 'text',
+  });
+
+  if (cur && cur.op) {
+    // 槽里已经嵌了积木 —— 递归渲染，并给它完整路径（支持无限嵌套）
+    holder.append(renderBlock(cur, {
+      path: childPath(ownerPath, `inputs:${name}`),
+      inChain: false,
+    }));
     wrap.append(holder);
     return wrap;
   }
 
-  // ---- 普通值槽 ----
-  const kind = inp.kind || 'text';
-  const input = document.createElement('input');
-  input.className = 'vb-input-field';
-  input.type = kind === 'number' ? 'number' : 'text';
-  input.value = cur?.value ?? inp.default ?? '';
-  input.dataset.input = name;
-  input.dataset.kind = kind;
-  input.placeholder = inp.default ?? '';
-  wrap.append(input);
+  if (isBool) {
+    const chip = h('button', 'vb-bool-chip', {
+      type: 'button',
+      'data-input': name,
+      'data-value': cur?.value === true ? 'true' : 'false',
+      draggable: false,
+    });
+    chip.textContent = cur?.value === true ? '真' : '假';
+    holder.append(chip);
+  } else {
+    // 普通值槽：保留可编辑的输入框，同时它所在的 holder 能接收拖进来的值积木
+    const input = h('input', 'vb-input-field', {
+      type: inp.kind === 'number' ? 'number' : 'text',
+      'data-input': name,
+      'data-kind': inp.kind || 'text',
+      placeholder: inp.default ?? '',
+      draggable: false,
+    });
+    input.value = cur?.value ?? inp.default ?? '';
+    holder.append(input);
+  }
+  wrap.append(holder);
   return wrap;
 }
 
 /** 渲染一个菜单字段（下拉） */
 function renderField(node, f) {
-  const wrap = document.createElement('span');
-  wrap.className = 'vb-field';
-
-  const sel = document.createElement('select');
-  sel.className = 'vb-field-select';
-  sel.dataset.field = f.name;
-
+  const wrap = h('span', 'vb-field');
+  const sel = h('select', 'vb-field-select', { 'data-field': f.name, draggable: false });
   const cur = node.fields?.[f.name] ?? f.default;
-  const options = f.options || [];
-  for (const opt of options) {
-    const o = document.createElement('option');
-    // 选项可以是字符串，也可以是 { value, label }
+  for (const opt of f.options || []) {
     const value = (opt && typeof opt === 'object') ? opt.value : opt;
     const label = (opt && typeof opt === 'object') ? (opt.label ?? opt.value) : opt;
-    o.value = String(value);
-    o.textContent = String(label);
-    sel.append(o);
+    sel.append(h('option', '', { value: String(value), text: String(label) }));
   }
-  // 当前值不在选项里（库换了 / 老工程）—— 补一个进去，别让用户看到空白
   const curVal = (cur && typeof cur === 'object') ? cur.value : cur;
   if (curVal !== undefined && curVal !== null && ![...sel.options].some((o) => o.value === String(curVal))) {
-    const o = document.createElement('option');
-    o.value = String(curVal);
-    o.textContent = String(curVal);
-    sel.append(o);
+    sel.append(h('option', '', { value: String(curVal), text: String(curVal) }));
   }
   sel.value = String(curVal ?? '');
-
   wrap.append(sel);
   return wrap;
 }
