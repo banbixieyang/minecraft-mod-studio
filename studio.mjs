@@ -8,6 +8,7 @@
  *   mcstudio build <目录>        跑构建出 jar
  *   mcstudio modules            看装了哪些模块
  *   mcstudio blocks <子命令>     积木工具箱（列 / 编译 / 造库 / 体检 / 装库）
+ *   mcstudio convert <子命令>    功能转换器（跨版本 / 跨加载器）
  *   mcstudio tools              列出 tools/ 里的脚本与用途
  *
  * 界面只是壳，所有能力这里都能直接调 —— 方便接 CI 或脚本化。
@@ -44,6 +45,7 @@ MC Studio —— Minecraft 模组可视化编辑器
   node studio.mjs modules
   node studio.mjs targets
   node studio.mjs blocks help      积木工具箱（列 / 编译 / 造库 / 体检 / 装库）
+  node studio.mjs convert help     功能转换器（跨版本 / 跨加载器搬功能）
   node studio.mjs tools            tools/ 脚本索引
 
 所有命令都支持 --json。
@@ -171,6 +173,18 @@ async function main() {
       const { blocksCommand } = await import('./core/cli/blocks.mjs');
       const r = await blocksCommand(args[1], args.slice(2));
       // --json 给 CI 用：只吐结构化结果，不掺人话
+      if (flag('json') && r.data !== null && r.data !== undefined) {
+        console.log(JSON.stringify(r.data, null, 2));
+      } else {
+        for (const line of r.lines) console.log(line);
+      }
+      if (r.exitCode) process.exitCode = r.exitCode;
+      break;
+    }
+
+    case 'convert': {
+      const { convertCommand } = await import('./core/cli/convert.mjs');
+      const r = await convertCommand(args[1], args.slice(2));
       if (flag('json') && r.data !== null && r.data !== undefined) {
         console.log(JSON.stringify(r.data, null, 2));
       } else {

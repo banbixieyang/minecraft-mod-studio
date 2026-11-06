@@ -14,6 +14,7 @@ import { renderInspectPanel } from './inspect.js';
 import { renderKnowledgePanel, openKnowledgeDoc } from './knowledge.js';
 import { renderAiPanel, setAiDraft } from './ai.js';
 import { renderVisualPanel, openVisualGuide } from './visual.js';
+import { renderConvertPanel } from './convert.js';
 import { openHookInstall } from './hookinstall.js';
 
 const LS_KEY = 'mcstudio.lastProject';
@@ -285,7 +286,7 @@ function renderWorkspace() {
   const header = renderHeader();
 
   // 库、分析、学习、AI、积木 是整屏面板，占掉侧栏+编辑+检查器三栏的位置
-  if (['library', 'analyze', 'knowledge', 'ai', 'inspect', 'visual'].includes(state.view)) {
+  if (['library', 'analyze', 'knowledge', 'ai', 'inspect', 'visual', 'convert'].includes(state.view)) {
     const go = (v) => {
       state.view = v;
       renderWorkspace();
@@ -324,11 +325,13 @@ function renderWorkspace() {
           ? renderAnalyzePanel(ctx)
           : state.view === 'inspect'
             ? renderInspectPanel(ctx)
-            : state.view === 'visual'
-              ? renderVisualPanel(ctx)
-              : state.view === 'knowledge'
-                ? renderKnowledgePanel(ctx)
-                : renderAiPanel(ctx);
+              : state.view === 'visual'
+                ? renderVisualPanel(ctx)
+                : state.view === 'convert'
+                  ? renderConvertPanel(ctx)
+                  : state.view === 'knowledge'
+                    ? renderKnowledgePanel(ctx)
+                    : renderAiPanel(ctx);
     setChildren(app, el('div.workspace-root', {}, header, el('div.workspace-body.single', {}, panel)));
     return;
   }
@@ -394,6 +397,7 @@ function renderHeader() {
     el('div.spacer'),
     el('button.btn.ghost', { title: '积木库、拆解台、分析外部 mod', onclick: () => goView('library') }, '库'),
     el('button.btn.ghost', { title: '像搭积木一样写代码，生成真 Java', onclick: () => goView('visual') }, '积木'),
+    el('button.btn.ghost', { title: '把功能 / 效果搬到另一个版本或加载器', onclick: () => goView('convert') }, '转换'),
     el('button.btn.ghost', { title: '拆开一个现成的 mod，把能用的留下来', onclick: () => goView('analyze') }, '分析'),
     el('button.btn.ghost', { title: '内置教程、26.3 速查、任务卡', onclick: () => goView('knowledge') }, '学习'),
     el('button.btn.ghost', { title: '完整使用手册：六个区域、每条路怎么走', onclick: () => openManual() }, '手册'),

@@ -57,6 +57,13 @@ node studio.mjs start
 
 ![效果库](docs/screenshots/16-效果库.png)
 
+**搬功能到别的版本 / 加载器** —— 顶栏「**转换**」，把当前工程、一段 Java、
+内置效果或分享包里的功能尽量搬到另一个目标（如 Fabric 26.3 → Forge 1.20.1）。
+有证据的写法（积木模板、资源 id 类、注册表方法）自动改；加载器事件、注册入口、
+本地 jar 这类**不敢硬改**的会明确标「需人工」并写 `// TODO(转换)`，附目标平台的做法提示。
+报告分四档：`自动完成 / 已改写 / 需人工 / 做不到`，应用前可预览、应用后重出资源再构建验证。
+规则可插拔，详见[《10 · 功能转换器》](docs/guides/10-转换器插件.md)。
+
 **拆别人的 mod** —— 把别人的 jar **拖进面板**就能解析：
 读出它有什么内容、挂了哪些事件、依赖谁，勾选后转成包直接复用。
 支持 Fabric / Quilt / Forge / NeoForge / 老 `mcmod.info`，
@@ -87,6 +94,10 @@ node studio.mjs start
 盔甲贴图路径、配方 `result` 形状……）由生成器按适配器的 `features.resourceFormat` 分派，
 内容模块不需要判断版本号。细节见 [`docs/module-guide.md`](docs/module-guide.md)。
 
+**已有工程想换目标**：用顶栏「转换」做一次预览再应用，它会把 `target` 整体换成新目标的默认值、
+改写代码钩子里的平台差异写法，并把不敢自动改的地方列成「需人工」清单；
+应用后再生成 + 构建。详见[《10 · 功能转换器》](docs/guides/10-转换器插件.md)。
+
 ## 文档
 
 - **用户手册**：[`docs/README.md`](docs/README.md)
@@ -110,7 +121,9 @@ core/                  引擎（纯 Node 模块，不碰 DOM）
     forge-1.20.1/      Forge 1.20.1：官方 MDK 骨架、Java 生成、1.20.1 资源方言
   visual/              可视化积木引擎：定义 / 模型 / 编译 / 反编译 / 库 / 体检
     modpacks/          mod 专属积木包（可插拔，内置 Goety + 用户目录自动发现）
-  cli/                 命令行子命令（blocks / tools 索引）
+  convert/             功能转换器：IR / 引擎 / 规则注册表
+    rules/             内置转换规则（模板回填 / 符号 / 事件 / 资源方言 / 条目 / 积木 / 依赖）
+  cli/                 命令行子命令（blocks / convert / tools 索引）
   generator/           通用生成流水线：资源 JSON、贴图、写盘与指纹
   modules/             模块注册表（扫描 modules/ 与 <工程>/.studio/modules）
   library/             效果包：Pack 格式、包库、捕获、安装、内置效果模板
@@ -159,6 +172,9 @@ node studio.mjs blocks from-jar SomeMod.jar --out MyBlocks.mcblocks.json
 node studio.mjs blocks validate MyBlocks.mcblocks.json   # 分享前体检
 node studio.mjs blocks install MyBlocks.mcblocks.json
 node studio.mjs blocks new --name "治疗" --id my.heal --code 'player.heal(%v);' --param v:number
+node studio.mjs convert rules / matrix           # 转换规则与能力矩阵
+node studio.mjs convert run projects/mymod --to forge-1.20.1 --out /tmp/Converted.java
+node studio.mjs convert apply projects/mymod --to forge-1.20.1 --yes --generate
 node studio.mjs tools                           # tools/ 脚本索引
 ```
 
@@ -168,9 +184,11 @@ node studio.mjs tools                           # tools/ 脚本索引
 node studio.mjs blocks validate dist/*.mcblocks.json || exit 1
 ```
 
-两个扩展点**不用改引擎源码**：把适配器丢进 `~/.mcstudio/targets/`、
-把积木包丢进 `~/.mcstudio/modpacks/`，引擎启动时自动发现。
-可照抄的样板在 `examples/extend/`，契约见[《09 · 扩展与工具包》](docs/guides/09-扩展与工具包.md)。
+三个扩展点**不用改引擎源码**：把适配器丢进 `~/.mcstudio/targets/`、
+把积木包丢进 `~/.mcstudio/modpacks/`、把转换规则丢进 `~/.mcstudio/convert/`，
+引擎启动时自动发现。可照抄的样板在 `examples/extend/`，契约见
+[《09 · 扩展与工具包》](docs/guides/09-扩展与工具包.md)，
+转换器用法见[《10 · 功能转换器》](docs/guides/10-转换器插件.md)。
 
 ## 学习中心与 AI
 
@@ -194,7 +212,15 @@ node studio.mjs blocks validate dist/*.mcblocks.json || exit 1
 
 ## 自检
 
+一条命令跑全量快测（不跑 Gradle / 浏览器）；`npm test` 等价于第一条：
+
 ```bash
+node tests/run.mjs                     # 快测汇总，任一用例挂掉退出码非 0
+node tests/run.mjs --build             # 加上所有 --build 真编译用例
+node tests/run.mjs --all               # 再加 Gradle 骨架构建 + 浏览器冒烟（要先起服务）
+node tests/run.mjs --only convert      # 只跑文件名含 convert 的用例
+node tests/run.mjs --json              # 结构化结果给 CI
+
 node tests/smoke.mjs projects/testmod     # 灌数据 → 生成 → 断言资源格式 → 检查指纹冲突
 node tests/uitest.mjs                     # 无头浏览器点一遍所有页面，收集 JS 报错
 node tests/uitest.mjs --build             # 额外真跑一次 gradle 构建
@@ -209,6 +235,9 @@ node tests/ai.mjs                         # AI：三家协议（整段+流式）
 node tests/cookbook.mjs --build           # Fabric 任务卡代码真编译 + 变体符号核对
 node tests/forge.mjs --build              # Forge 1.20.1 骨架 + 2 张 Forge 任务卡真编译
 node tests/generality.mjs                 # 分析器通用性：换任何 mod 都不大面积踩坑
+node tests/extensible.mjs                 # 目标 / modpack / 自定义积木 / lint / CLI / 工具索引
+node tests/convert.mjs                    # 转换器：IR / 规则 / 双向转换 / CLI / HTTP / 应用 / 生成
+node tests/convert.mjs --build            # 额外对转换后的 Forge 工程真跑 Gradle
 node tests/docs.mjs                       # 文档一致性：与知识库同源 + 链接全有效
 node tests/tutorial.mjs                   # 上手入口：首页三卡 → 知识库 → 打开对应文档
 ```

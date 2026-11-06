@@ -25,6 +25,7 @@ import { handleExtras } from './routes_extras.mjs';
 import { handleKnowledge } from './routes_kb.mjs';
 import { handleHooks } from './routes_hooks.mjs';
 import { handleVisual } from './routes_visual.mjs';
+import { handleConvert } from './routes_convert.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIR = path.resolve(HERE, '../../ui');
@@ -156,6 +157,12 @@ async function handleApi(req, res, route, q, url) {
   // 可视化积木
   if (route.startsWith('visual/')) {
     const handled = await handleVisual(req, res, route, q, method);
+    if (handled !== false) return;
+  }
+
+  // 功能转换器（跨版本 / 跨加载器）
+  if (route.startsWith('convert/')) {
+    const handled = await handleConvert(req, res, route, q, method);
     if (handled !== false) return;
   }
 

@@ -1750,6 +1750,73 @@ try {
       }
     }
   }
+  // ---------- 功能转换器 ----------
+  // 覆盖：顶栏进面板 → 换成「贴代码」 → 选目标 → 预览 → 四档状态与转换后代码都渲染出来
+  if (await clickByText('.app-bar button', '转换')) {
+    await sleep(500);
+    const cv = await evaluate(`(async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const q = (s) => document.querySelector(s);
+      const qa = (s) => [...document.querySelectorAll(s)];
+      if (!q('.convert-panel')) return { err: '顶栏点了「转换」但面板没出现' };
+      // 三个接口并行拉元数据，等目标下拉真的有选项再动
+      for (let i = 0; i < 24 && qa('.convert-body select').length < 3; i++) await sleep(150);
+      for (let i = 0; i < 24 && qa('.convert-body select')[0]?.options.length < 2; i++) await sleep(150);
+      const selects = qa('.convert-body select');
+      const out = { selects: selects.length, targets: selects[0]?.options.length || 0 };
+
+      // 切到「贴一段 Java 代码」（change 会整块重绘）
+      const srcSel = qa('.convert-body select')[0];
+      srcSel.value = 'code';
+      srcSel.dispatchEvent(new Event('change', { bubbles: true }));
+      await sleep(300);
+      const ta = q('.convert-code-input');
+      out.textarea = !!ta;
+      if (!ta) return { ...out, err: '切到贴代码后没有输入框' };
+      ta.value = 'net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(net.minecraft.resources.Identifier.parse("minecraft:stone"));';
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // 明确指定源 / 目标，别依赖当前工程的目标
+      const s2 = qa('.convert-body select');
+      const fromSel = s2.find(s => [...s.options].some(o => o.value === 'fabric-26.3') && s !== s2[0]);
+      const toSel = s2.find(s => [...s.options].some(o => o.value === 'forge-1.20.1') && s !== fromSel && s !== s2[0]);
+      if (fromSel) { fromSel.value = 'fabric-26.3'; fromSel.dispatchEvent(new Event('change', { bubbles: true })); }
+      if (toSel) { toSel.value = 'forge-1.20.1'; toSel.dispatchEvent(new Event('change', { bubbles: true })); }
+
+      const btn = qa('.convert-body button').find(b => b.textContent.includes('预览转换'));
+      out.previewBtn = !!btn;
+      if (!btn) return { ...out, err: '没有预览转换按钮' };
+      btn.click();
+      for (let i = 0; i < 30 && !q('.convert-summary'); i++) await sleep(200);
+      out.summary = !!q('.convert-summary');
+      out.badges = qa('.convert-badge').length;
+      out.items = qa('.convert-item').length;
+      out.code = q('.convert-code')?.textContent || '';
+      out.hasBadgeLabels = /自动完成|已改写|需人工|做不到/.test(q('.convert-summary')?.textContent || '');
+      out.leaked = /undefined|NaN/.test(q('.convert-report')?.textContent || '');
+      return out;
+    })()`);
+
+    if (cv.err) problems.push({ kind: '转换', text: cv.err });
+    else {
+      const checks = [
+        ['面板能打开且目标下拉有数据', cv.selects >= 3 && cv.targets >= 2],
+        ['贴代码来源有输入框', cv.textarea],
+        ['预览出分级汇总', cv.summary && cv.hasBadgeLabels],
+        ['四档状态徽章齐全', cv.badges === 4],
+        ['逐项结论渲染出来', cv.items > 0],
+        ['转换后代码是 Forge 写法', cv.code.includes('ResourceLocation.parse') && cv.code.includes('BuiltInRegistries.ITEM.get(')],
+        ['没有 undefined / NaN 泄漏', !cv.leaked],
+      ];
+      for (const [name, cond] of checks) {
+        if (cond) record('34-转换 ' + name, '通过');
+        else problems.push({ kind: '转换', text: name + '：没通过 ' + JSON.stringify({ selects: cv.selects, targets: cv.targets, badges: cv.badges, items: cv.items, code: cv.code.slice(0, 120) }) });
+      }
+    }
+    await clickByText('.panel-bar button', '← 返回');
+  } else {
+    problems.push({ kind: '转换', text: '顶栏找不到「转换」按钮' });
+  }
 } finally {
   ws.close();
   child.kill();

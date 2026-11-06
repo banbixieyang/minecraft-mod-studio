@@ -360,6 +360,7 @@ Gradle 会自动去下载（首次构建慢一点）。机器上只要有一个�
 | 拖积木写逻辑、生成积木库 | [`guides/07-积木编程.md`](./guides/07-积木编程.md) |
 | 手把手搭第一个积木模组 | [`guides/08-积木编程入门.md`](./guides/08-积木编程入门.md) |
 | 加新平台、写专属积木包、命令行工具箱 | [`guides/09-扩展与工具包.md`](./guides/09-扩展与工具包.md) |
+| 把功能 / 效果搬到另一个版本或加载器 | [`guides/10-转换器插件.md`](./guides/10-转换器插件.md) |
 | 接一套新的模组知识库 / AI 怎么用 | [`knowledge-and-ai.md`](./knowledge-and-ai.md) |
 | 开发一个模块 | [`module-guide.md`](./module-guide.md) |
 

@@ -254,4 +254,16 @@ export const api = {
   visualInstallLibrary: (body) => request('POST', '/api/visual/install-library', body),
   /** 从 mod jar 生成积木库 */
   visualLibraryFromJar: (body) => request('POST', '/api/visual/library-from-jar', body),
+
+  // ---------- 功能转换器 ----------
+  /** 规则清单与加载诊断 */
+  convertRules: () => request('GET', '/api/convert/rules'),
+  /** 目标之间的能力矩阵 */
+  convertMatrix: () => request('GET', '/api/convert/matrix'),
+  /** 抽出功能 IR（只读） */
+  convertInspect: (body) => request('POST', '/api/convert/inspect', body),
+  /** 转换预览（只读，返回分级报告） */
+  convertPreview: (body) => request('POST', '/api/convert/preview', body),
+  /** 把转换结果落到工程（写盘，必须 confirmed:true） */
+  convertApply: (body) => request('POST', '/api/convert/apply', { ...body, confirmed: true }),
 };
