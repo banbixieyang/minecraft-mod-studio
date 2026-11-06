@@ -15,6 +15,7 @@
  */
 import { getBlock, templateFor } from './blocks.mjs';
 import { walk } from './model.mjs';
+import { getTarget } from '../target/registry.mjs';
 
 /**
  * 事件签名表：帽形积木的 id → 该事件方法的 Java 参数与方法体模板。
@@ -438,8 +439,29 @@ export function compileProgram(program, opts = {}) {
   };
 }
 
-/** 按目标挑事件签名 */
+/**
+ * 按目标挑事件签名。
+ *
+ * ⚠️ 以前靠 `targetId.startsWith('forge')` 猜 —— 外部目标叫
+ *    `neoforge-1.21.1` 会被当成 Fabric，生成的事件参数全是错的。
+ *    现在优先查适配器声明的 platform / signatureKey，只有目标压根没登记
+ *    才退回字符串猜测（保证老数据仍能编）。
+ */
 function pickSignature(sig, targetId) {
+  // 1. 签名表里针对这个目标单独写了一份，最精确
+  if (sig[targetId]) return sig[targetId];
+
+  let adapter = null;
+  try { adapter = getTarget(targetId); } catch { /* 未登记的目标走兜底 */ }
+  if (adapter?.signatureKey && sig[adapter.signatureKey]) return sig[adapter.signatureKey];
+
+  const platform = String(adapter?.platform || '').toLowerCase();
+  const byPlatform = platform === 'forge' || platform === 'neoforge' ? 'forge'
+    : platform === 'fabric' ? 'fabric26'
+      : '';
+  if (byPlatform && sig[byPlatform]) return sig[byPlatform];
+
+  // 2. 兜底：跟老版本完全一致的行为
   const prefix = String(targetId).startsWith('forge') ? 'forge' : 'fabric26';
   return sig[prefix] ?? sig.fabric26 ?? '';
 }

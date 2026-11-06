@@ -947,6 +947,9 @@ async function openCustomBlock() {
   );
   const paramsBox = el('div.vb-params');
   const params = [];
+  // 默认全目标：以前造出来的积木只挂在 fabric-26.3 上，换到 Forge 工程就没了
+  const allTargets = el('input', { type: 'checkbox' });
+  allTargets.checked = true;
 
   const addParam = () => {
     const p = { name: paramName.value.trim(), kind: paramKind.value, default: '' };
@@ -978,6 +981,10 @@ async function openCustomBlock() {
       el('button.btn.ghost.small', { onclick: addParam }, '+ 加参数'),
     ),
     paramsBox,
+    el('label.vb-target-choice', {},
+      allTargets,
+      el('span', { text: '所有目标都能用（推荐，换工程 / 换加载器时积木不会消失）' }),
+    ),
     el('p.muted.small', {
       text: '代码里的 %占位符 必须和参数一一对应。生成后这条积木会出现在「自定义」分类里。',
     }),
@@ -1003,7 +1010,7 @@ async function openCustomBlock() {
               name: name.value.trim(),
               code: code.value,
               params,
-              targetId: V.targetId,
+              ...(allTargets.checked ? { allTargets: true } : { targetId: V.targetId }),
             });
             toast('造好了，正在刷新积木库…');
             await load();
@@ -1108,8 +1115,27 @@ async function openLibraryManager() {
 
   const render = async () => {
     try {
-      const r = await api.visualLibraries(V.ctx.root);
+      // 扩展状态拉不到也不能让整个弹窗挂掉 —— 它是补充信息，不是主流程
+      const [r, ext] = await Promise.all([
+        api.visualLibraries(V.ctx.root),
+        api.visualExtensions().catch(() => null),
+      ]);
       const libs = r.libraries || [];
+      const extBox = ext ? el('div.vb-ext-box', {},
+        el('div.vb-ext-title', {
+          text: `扩展：${ext.targets.length} 个目标 / ${ext.packs.length} 个专属积木包`,
+        }),
+        el('div.muted.small', {
+          text: `目标 ${ext.targets.map((t) => t.id).join('、') || '无'}；`
+            + `专属包 ${ext.packs.map((p) => p.id).join('、') || '无'}`,
+        }),
+        el('div.muted.small', {
+          text: '把 .mjs 放进 ~/.mcstudio/targets 或 ~/.mcstudio/modpacks 就能加新目标 / 新积木包，详见《09 · 扩展与工具包》。',
+        }),
+        ...(ext.diagnostics || []).map((d) => el('div.vb-side-warn', {
+          text: `${d.kind === 'target' ? '目标' : '积木包'}扩展提示：${d.text}`,
+        })),
+      ) : null;
       setContent(body,
         el('p.muted.small', {
           text: '库就是「积木包」。装了之后里面的积木会出现在左侧分类里，任何工程都能用。',
@@ -1117,7 +1143,7 @@ async function openLibraryManager() {
         ...libs.map((l) => el('div.vb-lib-item', {},
           el('div.vb-lib-name', {},
             el('strong', { text: l.name || l.id }),
-            el('span.muted.small', { text: ` ${l.blocks?.length ?? 0} 条` }),
+            el('span.muted.small', { text: ` ${l.blockCount ?? l.blocks?.length ?? 0} 条` }),
           ),
           el('span.muted.small', { text: l.source || '' }),
         )),
@@ -1125,6 +1151,7 @@ async function openLibraryManager() {
           el('button.btn.small', { onclick: () => { m.close(); openFromJar(); } }, '从 mod jar 生成库'),
           el('button.btn.ghost.small', { onclick: () => { m.close(); openCustomBlock(); } }, '代码造积木'),
         ),
+        ...(extBox ? [extBox] : []),
       );
     } catch (e) {
       setContent(body, el('div.vb-side-warn', { text: `读取失败：${e.message || e}` }));

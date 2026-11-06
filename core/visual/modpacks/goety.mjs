@@ -255,3 +255,20 @@ export function isGoety(report) {
   const ns = String(report?.mainNs || '').toLowerCase();
   return id === 'goety' || ns === 'goety';
 }
+
+/**
+ * 可插拔包契约（见 ./registry.mjs）。
+ *
+ * 以前 modlib.mjs 直接 import goetyPack/isGoety 写死分支；现在只是把同样的
+ * 能力声明成一个包，由注册表自动发现。别的地方要用 Goety 专属积木，
+ * 照着这个文件复制一份换掉 build() 就行，不用碰引擎。
+ */
+export const pack = {
+  id: 'goety',
+  label: 'Goety 专属积木',
+  modIds: ['goety'],
+  match: isGoety,
+  build({ targetId, report, opts = {} }) {
+    return goetyPack({ targetId, report, ...opts });
+  },
+};

@@ -93,6 +93,7 @@ node studio.mjs start
 - **完整手册**（八章 + 速查表，与应用内学习中心同源）：[`docs/guides/00-使用手册.md`](docs/guides/00-使用手册.md)
 - **积木编程入门**（手把手搭第一个模组）：[`docs/guides/08-积木编程入门.md`](docs/guides/08-积木编程入门.md)
 - **积木编程**（积木库、代码造积木、从 mod jar 生成库）：[`docs/guides/07-积木编程.md`](docs/guides/07-积木编程.md)
+- **扩展与工具包**（加新平台、写专属积木包、命令行工具箱）：[`docs/guides/09-扩展与工具包.md`](docs/guides/09-扩展与工具包.md)
 - **拆解别人的 mod**（导入 → 研究 → 改数值真生效）：[`docs/guides/06-拆解别人的mod.md`](docs/guides/06-拆解别人的mod.md)
 - **模块开发 / 加新版本**：[`docs/module-guide.md`](docs/module-guide.md)
 - **复用与分析**（效果库、包、导入别人的 mod）：[`docs/reuse-and-analysis.md`](docs/reuse-and-analysis.md)
@@ -104,9 +105,12 @@ node studio.mjs start
 
 ```
 core/                  引擎（纯 Node 模块，不碰 DOM）
-  target/              目标适配器注册表：每个「加载器 + MC 版本」一个目录
+  target/              目标适配器注册表（内置 + 自动发现 ~/.mcstudio/targets）
     fabric-26.3/       Fabric 26.3：骨架、Java 生成、26.x 资源方言
     forge-1.20.1/      Forge 1.20.1：官方 MDK 骨架、Java 生成、1.20.1 资源方言
+  visual/              可视化积木引擎：定义 / 模型 / 编译 / 反编译 / 库 / 体检
+    modpacks/          mod 专属积木包（可插拔，内置 Goety + 用户目录自动发现）
+  cli/                 命令行子命令（blocks / tools 索引）
   generator/           通用生成流水线：资源 JSON、贴图、写盘与指纹
   modules/             模块注册表（扫描 modules/ 与 <工程>/.studio/modules）
   library/             效果包：Pack 格式、包库、捕获、安装、内置效果模板
@@ -120,7 +124,9 @@ ui/                    前端（纯静态，零依赖，只通过 /api 通信）
 knowledge/             内置知识库：指南 / 速查 / 任务卡（随项目走，可读可搜）
 modules/               内置内容模块：物品 / 方块 / 配方 / 世界生成 / 材质 / 进度
 tests/                 回归用例
+examples/extend/       可照抄的扩展样板（也是回归测试夹具）
 docs/                  文档
+tools/                 一次性脚本与工具，`node studio.mjs tools` 列索引
 ```
 
 引擎和界面是彻底分开的：`studio.mjs` 的每个命令都直接调引擎，
@@ -140,12 +146,38 @@ docs/                  文档
 包库分三层：用户级 `~/.mcstudio/packs`、工程级 `<工程>/.studio/packs`、只读内置。
 一个包一个 json 文件，没有数据库，索引就是扫目录。
 
+## 命令行工具箱
+
+界面里的积木能力**全都有命令行入口**，可以直接接 CI 或写进脚本：
+
+```bash
+node studio.mjs blocks help                       # 全部用法
+node studio.mjs blocks targets / packs           # 目标、mod 专属积木包清单（含外部发现的）
+node studio.mjs blocks list --target forge-1.20.1
+node studio.mjs blocks compile projects/mymod --out /tmp/ModLogic.java
+node studio.mjs blocks from-jar SomeMod.jar --out MyBlocks.mcblocks.json
+node studio.mjs blocks validate MyBlocks.mcblocks.json   # 分享前体检
+node studio.mjs blocks install MyBlocks.mcblocks.json
+node studio.mjs blocks new --name "治疗" --id my.heal --code 'player.heal(%v);' --param v:number
+node studio.mjs tools                           # tools/ 脚本索引
+```
+
+命令都支持 `--json` 和明确的退出码，坏库能直接让流水线挂掉：
+
+```bash
+node studio.mjs blocks validate dist/*.mcblocks.json || exit 1
+```
+
+两个扩展点**不用改引擎源码**：把适配器丢进 `~/.mcstudio/targets/`、
+把积木包丢进 `~/.mcstudio/modpacks/`，引擎启动时自动发现。
+可照抄的样板在 `examples/extend/`，契约见[《09 · 扩展与工具包》](docs/guides/09-扩展与工具包.md)。
+
 ## 学习中心与 AI
 
 顶栏的 **学习** 和 **AI** 是两个整屏面板，解决的是「不会写 Java 的人怎么把想法做成能编译的代码」
 和「会写的人怎么少翻文档」。
 
-- **学习** —— 内置知识库：9 篇指南、速查、任务卡，每篇都标了 `platform` 与证据等级。
+- **学习** —— 内置知识库：10 篇指南、速查、任务卡，每篇都标了 `platform` 与证据等级。
   Fabric 26.3 部分在本机实编验证；Forge 1.20.1 部分由官方 MDK 解包 + `javap` 复核 +
   ForgeGradle 真编译背书。检索按**章节**而不是按文档，并按当前工程平台加权。
   如果本机装了 MC 开发专家包，会自动挂进来一起搜（那个是全平台的，按平台调权重不硬过滤）。

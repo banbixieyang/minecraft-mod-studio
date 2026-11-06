@@ -1620,6 +1620,50 @@ try {
     }
   }
 
+  // ---------- 积木库弹窗：扩展状态 + 库条数 ----------
+  // 目标 / mod 专属包是自动发现的，界面得能看见「装上了没有」，
+  // 否则用户只能翻命令行。顺带回归库列表的条数显示（之前一直显示 0 条）。
+  {
+    const ex = await evaluate(`(async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const q = (s) => document.querySelector(s);
+      const qa = (s) => [...document.querySelectorAll(s)];
+      const btn = qa('.panel-bar button').find((b) => b.textContent.trim() === '积木库');
+      if (!btn) return { err: '没有积木库按钮', panelBtns: qa('.panel-bar button').map(b => b.textContent.trim()).join('|') };
+      btn.click();
+      // 弹窗内容是异步拉的（两个接口并行），别用固定 sleep 赌它渲染完
+      for (let i = 0; i < 24 && !q('.vb-lib-item'); i++) await sleep(150);
+      await sleep(300);
+      const box = q('.vb-ext-box');
+      const out = {
+        box: !!box,
+        title: q('.vb-ext-title')?.textContent || '',
+        libItems: qa('.vb-lib-item').length,
+        countShown: /\\d+ 条/.test(q('.vb-lib-item .muted')?.textContent || ''),
+        leaked: (box?.textContent || '').includes('undefined'),
+        modalHosts: qa('.modal-host').length,
+        bodyText: (q('.modal-body')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 160),
+      };
+      q('.modal-host')?.remove();
+      return out;
+    })()`);
+    if (ex.err) problems.push({ kind: '积木', text: ex.err + ' ' + (ex.panelBtns || '') });
+    else {
+      const detail = `（弹窗 ${ex.modalHosts} 个，库 ${ex.libItems} 条，body: ${ex.bodyText}）`;
+      const checks = [
+        ['扩展状态卡片出现', ex.box],
+        ['显示目标与专属包数量', /个目标/.test(ex.title) && /专属积木包/.test(ex.title)],
+        ['库列表有条目', ex.libItems > 0],
+        ['库条数不是 0 条', ex.countShown],
+        ['没有 undefined 泄漏', !ex.leaked],
+      ];
+      for (const [name, cond] of checks) {
+        if (cond) record('33-扩展 ' + name, '通过');
+        else problems.push({ kind: '积木', text: name + '：没通过 ' + detail });
+      }
+    }
+  }
+
   // ---------- 积木入门向导 ----------
   // 覆盖：打开向导 → 步进 → 「带我做」真的操作界面 → 最后一步「完成」能收掉面板
   // 关键回归点：面板重绘必须用 setContent 而不是 fill（fill 是追加，

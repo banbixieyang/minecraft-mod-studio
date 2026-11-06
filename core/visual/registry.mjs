@@ -15,6 +15,7 @@ import { builtinBlocks, BUILTIN_CATEGORIES } from './builtin.mjs';
 import { RAW_JAVA_BLOCK, clearDecompileCache } from './decompile.mjs';
 import { installAllFromDir, scanLibraries } from './library.mjs';
 import { SIGNATURES } from './compile.mjs';
+import { listTargets } from '../target/registry.mjs';
 
 /** 用户级积木库目录 */
 export function userBlocksDir() {
@@ -196,7 +197,10 @@ function hasSignature(op) {
  * @param {Array} [opts.params] 参数定义 [{name, kind, default}]
  * @param {string} [opts.category]
  * @param {string} [opts.description]
- * @param {string} [opts.targetId] 只在这个目标下可用
+ * @param {string[]} [opts.targets] 适用目标 id 列表
+ * @param {boolean} [opts.allTargets] 显式要求全目标
+ * @param {string} [opts.targetId] 单目标（兼容旧调用）；'*' 等于全目标
+ *                                 都不传时默认全目标
  * @returns {{ok:boolean, block?:object, error?:string}}
  */
 export function createUserBlock(opts = {}) {
@@ -212,7 +216,33 @@ export function createUserBlock(opts = {}) {
   if (!code) return { ok: false, error: '代码不能为空' };
 
   const params = opts.params || [];
-  const targetId = opts.targetId || 'fabric-26.3';
+
+  /**
+   * 这条积木在哪些目标下能用。
+   *
+   * ⚠️ 默认给**全部目标**。以前默认写死 fabric-26.3，用户造的积木
+   *    一换到 Forge 工程就从库里消失了 —— 这是个真 bug（G5 的缺口）。
+   *    自定义积木的 code 是用户自己写的通用 Java 片段，多目标共用一份模板
+   *    是安全的；真要写平台专属代码，用 --target / targets 显式收窄。
+   *
+   * 优先级：targets 数组 > allTargets / targetId='*' > 显式 targetId > 全部
+   */
+  const knownIds = listTargets().map((t) => t.id);
+  let targets;
+  if (Array.isArray(opts.targets) && opts.targets.length) {
+    targets = opts.targets.map(String);
+  } else if (opts.allTargets === true || opts.targetId === '*') {
+    targets = knownIds.slice();
+  } else if (opts.targetId) {
+    targets = [String(opts.targetId)];
+  } else {
+    targets = knownIds.slice();
+  }
+  for (const t of targets) {
+    if (!knownIds.includes(t)) {
+      return { ok: false, error: `未知目标 "${t}"，可选：${knownIds.join(', ')}` };
+    }
+  }
 
   // 参数必须在代码里被用到，且占位符要合法
   const declared = new Set();
@@ -251,11 +281,13 @@ export function createUserBlock(opts = {}) {
       required: p.required !== false,
     })),
     fields: [],
-    java: { [targetId]: code },
+    java: Object.fromEntries(targets.map((t) => [t, code])),
     userDef: {
       code,
       params: params.map((p) => ({ ...p })),
-      targetId,
+      // targetId 保留着兼容旧版界面 / 旧库文件，新代码一律读 targets
+      targetId: targets[0],
+      targets,
       createdAt: new Date().toISOString(),
     },
   };

@@ -27,13 +27,23 @@ import { analyze, closeReport } from '../analyze/report.mjs';
 import { parseClass } from '../analyze/classfile.mjs';
 import { openSource } from '../analyze/sources.mjs';
 import { LIB_FORMAT, LIB_VERSION } from './library.mjs';
-import { goetyPack, isGoety } from './modpacks/goety.mjs';
+import { listTargets, getTarget } from '../target/registry.mjs';
+import { runPacks } from './modpacks/registry.mjs';
 
-/** 我们认识的目标（loader + MC 版本 → 目标 id） */
-export const KNOWN_TARGETS = [
-  { id: 'fabric-26.3', loader: 'fabric', mc: '26.3', label: 'Fabric 26.3' },
-  { id: 'forge-1.20.1', loader: 'forge', mc: '1.20.1', label: 'Forge 1.20.1' },
-];
+/**
+ * 我们认识的目标（loader + MC 版本 → 目标 id）。
+ *
+ * ⚠️ 不再手写清单 —— 从目标适配器注册表派生。
+ *    以前这里和 core/target/registry.mjs 各写一份，加新目标要同时改两处，
+ *    漏一处就出现「界面能选、生成库时却不认」的怪事。
+ *    现在外部丢一个 adapter 进 ~/.mcstudio/targets/，这里自动就认。
+ */
+export const KNOWN_TARGETS = listTargets().map((t) => ({
+  id: t.id,
+  loader: t.platform,
+  mc: t.mcVersion,
+  label: t.label,
+}));
 
 /**
  * Forge 的 loaderVersion 与 MC 版本是一一对应的，
@@ -77,7 +87,8 @@ export function targetOfMod(meta) {
     const lv = firstNumber(meta.loaderVersion);
     const hit = FORGE_LOADER_TO_MC.find((x) => x.loader === lv);
     if (hit) {
-      const t = KNOWN_TARGETS.find((x) => x.id === 'forge-1.20.1' && hit.mc === x.mc);
+      // 按 loader + MC 版本找，不再写死 forge-1.20.1 —— 外部目标也能命中
+      const t = KNOWN_TARGETS.find((x) => x.loader === 'forge' && hit.mc === x.mc);
       if (t) return { id: t.id, label: t.label, how: `Forge loaderVersion ${lv}` };
     }
   }
@@ -130,9 +141,25 @@ export function checkApiAgainstTarget(src, targetId) {
   return { ok: true, matched, total: refs.size, rate: matched / refs.size };
 }
 
-/** 目标版本的 MC jar 在哪（本地 Gradle 缓存） */
+/**
+ * 目标版本的 MC jar 在哪（本地 Gradle 缓存）。
+ *
+ * 外部目标可以自己声明 `apiJar`（字符串或 ({home}) => 路径），
+ * 否则就退回内置两个目标的已知缓存位置 —— 没有 jar 时实测法会安静跳过。
+ */
 export function targetJarPath(targetId) {
   const home = os.homedir();
+  let adapter = null;
+  try { adapter = getTarget(targetId); } catch { /* 未知目标：走下面的兜底 */ }
+  if (adapter?.apiJar) {
+    const declared = typeof adapter.apiJar === 'function'
+      ? adapter.apiJar({ home, targetId })
+      : adapter.apiJar;
+    if (declared) {
+      const p = path.resolve(String(declared));
+      if (fs.existsSync(p)) return p;
+    }
+  }
   const cands = targetId === 'forge-1.20.1'
     ? [
       path.join(home, '.gradle/caches/forge_gradle/minecraft_user_repo/net/minecraftforge/forge/1.20.1-47.4.0_mapped_official_1.20.1/forge-1.20.1-47.4.0_mapped_official_1.20.1.jar'),
@@ -587,13 +614,16 @@ export function libraryFromReport(report, opts = {}) {
     warnings.push(`行为型积木 ${r.blocks.length} 条（扫了 ${r.scanned} 个方法，跳过 ${r.skipped} 个）`);
   }
 
-  // mod 专属积木包：手工写的「积木级」语义，比通用扫描对小朋友友好得多
-  if (opts.withPack !== false && targetId && isGoety(report)) {
-    const pack = goetyPack({ targetId, report });
-    blocks.push(...pack.blocks);
-    categories.push(...pack.categories);
-    warnings.push(...pack.notes);
-    warnings.push(`Goety 专属积木 ${pack.blocks.length} 条`);
+  // mod 专属积木包：手写的「积木级」语义，比通用扫描对小朋友友好得多。
+  //
+  // ⚠️ 以前这里写死 `if (isGoety(report)) goetyPack(...)`，加一个 mod 就得改引擎。
+  //    现在交给可插拔注册表：它扫内置 / 用户 / 工程目录里的 *.mjs，
+  //    按每个包自己的 match() 自动挑，第三方不用碰引擎就能加包。
+  if (opts.withPack !== false && targetId) {
+    const packResult = runPacks({ targetId, report, opts });
+    blocks.push(...packResult.blocks);
+    categories.push(...packResult.categories);
+    warnings.push(...packResult.notes);
   }
 
   const library = {

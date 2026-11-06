@@ -19,6 +19,8 @@ import {
   readLibrary, writeLibrary, installLibrary, validateLibrary,
 } from '../visual/library.mjs';
 import { libraryFromJar } from '../visual/modlib.mjs';
+import { listTargets, targetDiagnostics } from '../target/registry.mjs';
+import { listPacks, packDiagnostics } from '../visual/modpacks/registry.mjs';
 
 function json(res, code, data) {
   const body = JSON.stringify(data);
@@ -94,6 +96,21 @@ export async function handleVisual(req, res, route, q, method) {
       const root = resolveProjectRoot(q);
       ensureBuiltin();
       return ok(res, { libraries: listLibraries(root) });
+    }
+
+    // 扩展状态（只读）：目标和 mod 专属积木包都是自动发现的，
+    // 界面里得能看见「到底装上了没有」，否则用户只能翻命令行。
+    if (route === 'visual/extensions' && method === 'GET') {
+      const targets = listTargets().map((t) => ({
+        id: t.id, label: t.label, platform: t.platform,
+        mcVersion: t.mcVersion, builtin: t.builtin,
+      }));
+      const packs = listPacks();
+      const diagnostics = [
+        ...targetDiagnostics().map((text) => ({ kind: 'target', text })),
+        ...packDiagnostics().map((text) => ({ kind: 'pack', text })),
+      ];
+      return ok(res, { targets, packs, diagnostics });
     }
 
     // 编译预览（只读，不写盘）

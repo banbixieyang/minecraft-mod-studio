@@ -1325,3 +1325,19 @@ h5.md-h { font-size: 13px; }
   font-size: 11px; color: var(--text-3); cursor: pointer; text-decoration: underline;
 }
 .vb-guide-skip:hover { color: var(--text-1); }
+
+/* 代码造积木：适用目标勾选 */
+.vb-target-choice {
+  display: flex; align-items: center; gap: 7px;
+  margin: 8px 0 2px; font-size: 12px; color: var(--text-2); cursor: pointer;
+}
+.vb-target-choice input { accent-color: var(--accent); cursor: pointer; }
+
+/* 积木库弹窗里的扩展状态 */
+.vb-ext-box {
+  margin-top: 10px; padding: 10px 11px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-3);
+}
+.vb-ext-title { font-size: 12.5px; font-weight: 700; color: var(--text-1); margin-bottom: 5px; }
+.vb-ext-box .muted { line-height: 1.6; margin-top: 3px; }
+.vb-ext-box .vb-side-warn { margin-top: 5px; }

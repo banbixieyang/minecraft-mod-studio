@@ -237,6 +237,7 @@ export const api = {
   visualBlocks: (root, targetId) => request('GET', `/api/visual/blocks${qs({ root, targetId })}`),
   /** 已装的积木库 */
   visualLibraries: (root) => request('GET', `/api/visual/libraries${qs({ root })}`),
+  visualExtensions: () => request('GET', '/api/visual/extensions'),
   /** 读工程的积木程序 */
   visualProgram: (root) => request('GET', `/api/visual/program${qs({ root })}`),
   /** 保存工程的积木程序 */

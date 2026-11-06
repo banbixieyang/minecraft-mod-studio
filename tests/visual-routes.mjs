@@ -246,5 +246,15 @@ console.log('\n[7] 积木程序存取');
   fs.rmSync(projRoot, { recursive: true, force: true });
 }
 
+console.log('\n[8] 扩展状态（界面要能看见自动发现了什么）');
+{
+  const { status, data } = await call('visual/extensions', 'GET');
+  ok(status === 200, '返回 200', String(status));
+  ok(Array.isArray(data.targets) && data.targets.length >= 2, '有目标清单');
+  ok(data.targets.every((t) => t.id && t.platform), '目标带 id 与 platform');
+  ok(Array.isArray(data.packs) && data.packs.some((p) => p.id === 'goety'), '有内置 Goety 包');
+  ok(Array.isArray(data.diagnostics), '带诊断数组');
+}
+
 console.log(`\n${failed === 0 ? '全部通过' : `有 ${failed} 项失败`}\n`);
 process.exit(failed ? 1 : 0);
