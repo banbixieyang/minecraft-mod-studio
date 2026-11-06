@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
 import { isValidId, validateId, uniqueId } from './ids.mjs';
 
 export const STUDIO_DIR = '.studio';
@@ -24,8 +25,43 @@ export function hashOf(text) {
   return crypto.createHash('sha1').update(text, 'utf8').digest('hex').slice(0, 16);
 }
 
+/**
+ * 取某个目标的默认配置。
+ *
+ * 用动态 import 是为了避开循环依赖：target/registry 会用到工程模型，
+ * 工程模型再静态 import registry 就成环了。
+ * 这里是同步场景（blankProject 不是 async），所以用 createRequire。
+ */
+function targetDefaults(targetId) {
+  if (!targetId) return null;
+  try {
+    const req = createRequire(import.meta.url);
+    const { getTarget } = req('./target/registry.mjs');
+    const t = getTarget(targetId);
+    return t ? { ...t.defaults, id: t.id } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 空白工程模板 */
 function blankProject(meta = {}) {
+  // 目标配置：优先用 meta.target（可能是字符串 id 或对象），
+  // 否则按 id 从适配器取 defaults —— 这样只传 { id } 也不会丢字段。
+  const rawTarget = meta.target;
+  const targetId = typeof rawTarget === 'string'
+    ? rawTarget
+    : (rawTarget?.id || 'fabric-26.3');
+  const defaults = targetDefaults(targetId) || {
+    id: 'fabric-26.3',
+    platform: 'fabric',
+    mcVersion: '26.3',
+    loaderVersion: '0.19.5',
+    apiVersion: '0.164.0+26.3',
+    javaVersion: 25,
+  };
+  const override = typeof rawTarget === 'object' && rawTarget ? rawTarget : {};
+
   return {
     studioVersion: DATA_VERSION,
     meta: {
@@ -40,16 +76,14 @@ function blankProject(meta = {}) {
     },
     // target 由所选目标适配器的 defaults 整体提供。额外字段（forgeVersion / mappingChannel /
     // forgeGradleVersion 之类）原样保留，工程模型不认识也不该丢 —— 适配器 scaffold 要用。
+    // ⚠️ meta.target 只覆盖它写了的字段，不能整体替换 ——
+    //    否则只传 { id: 'forge-1.20.1' } 会把 javaVersion 之类的默认值全丢掉，
+    //    生成出 languageVersion = undefined 的 build.gradle。
     target: {
-      id: 'fabric-26.3',
-      platform: 'fabric',
-      mcVersion: '26.3',
-      loaderVersion: '0.19.5',
-      apiVersion: '0.164.0+26.3',
-      javaVersion: 25,
-      ...(meta.target || {}),
+      ...defaults,
+      ...override,
       // 兼容旧调用：把 defaults 摊在 meta 顶层（早期 CLI / 脚本这么干）
-      ...(meta.platform && !meta.target
+      ...(meta.platform && !rawTarget
         ? {
             id: `${meta.platform}-${meta.mcVersion || ''}`.replace(/-$/, ''),
             platform: meta.platform,
@@ -68,6 +102,14 @@ function blankProject(meta = {}) {
     state: {},
     // 生成钩子配置
     hooks: { java: [], js: [] },
+    // 本地 mod 依赖：[{ name, path }]，path 是 jar 的绝对路径。
+    // 用途：积木库里的某些积木要调用某个 mod 的 API
+    //（比如 Goety 专属积木），那工程编译时就得把那个 mod 的 jar 挂上，
+    // 否则生成的代码引用 com.Polarice3.Goety.* 编译不过。
+    localDeps: [],
+    // 可视化积木：程序（积木树）+ 装进这个工程的积木库
+    // programs 里每项是一棵积木树；根必须是帽形（事件）积木。
+    visual: { programs: [], libraries: [] },
   };
 }
 
@@ -131,6 +173,12 @@ function migrate(data) {
   }
   if (data.hooks && !Array.isArray(data.hooks.java)) data.hooks.java = [];
   if (data.hooks && !Array.isArray(data.hooks.js)) data.hooks.js = [];
+  // 老工程没有 localDeps（本地 mod 依赖）
+  if (!Array.isArray(data.localDeps)) data.localDeps = [];
+  // 老工程没有 visual（可视化积木程序）
+  if (!data.visual || typeof data.visual !== 'object') data.visual = { programs: [], libraries: [] };
+  if (!Array.isArray(data.visual.programs)) data.visual.programs = [];
+  if (!Array.isArray(data.visual.libraries)) data.visual.libraries = [];
   data.studioVersion = DATA_VERSION;
   return data;
 }

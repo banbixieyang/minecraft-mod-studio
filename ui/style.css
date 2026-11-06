@@ -87,8 +87,11 @@ code { font-family: var(--mono); font-size: 12px; }
 /* 第一次来的人最需要知道「我该点哪里」，所以首页直接给三条主路。 */
 .start-here { margin-top: 20px; }
 .start-here-title { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; }
-.start-here-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-@media (max-width: 760px) { .start-here-grid { grid-template-columns: 1fr; } }
+/* 上手卡现在有 4 张。auto-fit 在中等宽度下会算出 3 列，
+   于是第 4 张孤零零掉到第二行 —— 所以这里写死列数，按宽度换。 */
+.start-here-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 1180px) { .start-here-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .start-here-grid { grid-template-columns: 1fr; } }
 .start-card {
   text-align: left; background: var(--panel); border: 1px solid var(--border);
   border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: .14s;
@@ -1067,3 +1070,258 @@ h5.md-h { font-size: 13px; }
   white-space: pre-wrap; word-break: break-all; margin: 0;
   padding: 10px; max-height: 320px; overflow: auto; color: var(--text-2);
 }
+
+/* ============================================================
+   积木编辑器 —— Scratch 式的可视化编程
+   ============================================================ */
+.visual-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.visual-body { display: flex; flex: 1; min-height: 0; }
+
+/* ---- 左：积木库 ---- */
+.visual-palette {
+  width: 268px; flex: 0 0 268px; border-right: 1px solid var(--border);
+  background: var(--panel-2); display: flex; flex-direction: column; min-height: 0;
+}
+.vb-search { margin: 10px; flex: 0 0 auto; }
+.vb-cats { flex: 1; overflow: auto; padding: 0 8px 16px; }
+
+.vb-cat { margin-bottom: 4px; }
+.vb-cat-head {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 7px 8px; border: 0; border-radius: 7px; background: transparent;
+  cursor: pointer; text-align: left; font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--text);
+}
+.vb-cat-head:hover { background: var(--panel-3); }
+.vb-cat-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; }
+.vb-cat-label { flex: 1; }
+.vb-cat-count { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+.vb-cat-list { display: flex; flex-direction: column; gap: 3px; padding: 3px 0 6px 6px; }
+.vb-palette-item {
+  display: flex; align-items: center; gap: 6px; padding: 6px 9px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 7px;
+  cursor: grab; font-size: 12.5px; transition: .12s; user-select: none;
+}
+.vb-palette-item:hover { border-color: var(--accent); background: var(--accent-soft); }
+.vb-palette-item.vb-dragging { opacity: .45; }
+.vb-palette-item.vb-unsupported { opacity: .5; }
+.vb-palette-icon { font-size: 13px; flex: 0 0 auto; }
+.vb-palette-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vb-mod-tag {
+  font-size: 10px; padding: 1px 5px; border-radius: 4px;
+  background: #fff4dd; color: #8a5a00; border: 1px solid #f2dfb6; flex: 0 0 auto;
+}
+
+/* ---- 中：画布 ---- */
+.visual-canvas {
+  flex: 1; min-width: 0; overflow: auto; padding: 18px 20px 40px;
+  background:
+    radial-gradient(circle, #dfe3ec 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--bg);
+}
+.vb-canvas-inner { display: flex; flex-direction: column; gap: 20px; min-height: 100%; }
+
+.vb-program {
+  position: relative; display: inline-flex; flex-direction: column;
+  align-items: flex-start; width: fit-content; max-width: 100%;
+}
+.vb-program-hat { display: block; }
+.vb-program-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.vb-program-stack.vb-drop-target { outline: 2px dashed var(--accent); outline-offset: 6px; border-radius: 6px; }
+
+.vb-program-tools {
+  position: absolute; top: 2px; right: -2px; display: none; gap: 2px;
+  transform: translateX(100%); padding-left: 6px;
+}
+.vb-program:hover .vb-program-tools { display: flex; }
+
+.vb-add-program {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 16px;
+  border: 1px dashed var(--border-strong); border-radius: 10px;
+  background: rgba(255, 255, 255, .6);
+}
+
+/* ---- 积木本体 ---- */
+.vb {
+  position: relative; display: inline-flex; flex-direction: column;
+  border-radius: 8px; font-size: 12.5px; line-height: 1.5;
+  background: var(--vb-color, #5a6472); color: #fff;
+  padding: 7px 10px; cursor: grab; user-select: none;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .12);
+  max-width: 100%;
+}
+.vb:active { cursor: grabbing; }
+.vb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.vb-icon { font-size: 13px; flex: 0 0 auto; }
+.vb-text { white-space: pre-wrap; }
+
+/* 帽形：顶部圆弧 */
+.vb-hat { border-radius: 16px 16px 4px 4px; padding-top: 9px; }
+/* 值型：胶囊 */
+.vb-reporter { border-radius: 999px; padding: 4px 10px; display: inline-flex; }
+.vb-reporter .vb-head { flex-wrap: nowrap; }
+/* 条件型：六边形 */
+.vb-boolean { border-radius: 4px; }
+.vb-boolean::before,
+.vb-boolean::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 9px;
+  background: inherit;
+}
+.vb-boolean::before { left: -7px; clip-path: polygon(100% 0, 100% 100%, 0 50%); }
+.vb-boolean::after { right: -7px; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+
+.vb-unsupported { opacity: .48; }
+.vb-requires-mod { box-shadow: 0 0 0 2px #f0c36d, 0 1px 0 rgba(0, 0, 0, .12); }
+.vb-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 积木里的参数槽 */
+.vb-input { display: inline-flex; align-items: center; }
+.vb-input-raw { opacity: .8; font-family: var(--mono); font-size: 11px; }
+.vb-input-field {
+  font: inherit; font-size: 12px; padding: 1px 6px; min-width: 44px; max-width: 190px;
+  border: 0; border-radius: 4px; background: rgba(255, 255, 255, .92); color: #1e2330;
+  outline: none;
+}
+.vb-input-field:focus { box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
+.vb-input-field[data-kind="number"] { max-width: 72px; }
+.vb-input-bool {
+  min-width: 34px; height: 20px; border-radius: 10px; justify-content: center;
+  background: rgba(255, 255, 255, .9);
+}
+.vb-bool-chip {
+  font: inherit; font-size: 11px; font-weight: 600; color: #1e2330;
+  border: 0; border-radius: 10px; padding: 1px 9px; cursor: pointer;
+  background: transparent;
+}
+.vb-bool-chip:hover { background: rgba(0, 0, 0, .08); }
+.vb-input-block {
+  display: inline-flex; align-items: center; min-width: 30px; min-height: 20px;
+  padding: 0; border-radius: 4px;
+}
+.vb-slot-empty {
+  font-size: 10.5px; opacity: .7; padding: 1px 7px; border-radius: 4px;
+  border: 1px dashed rgba(255, 255, 255, .6);
+}
+.vb-input-block.vb-drop-target { outline: 2px dashed #fff; outline-offset: 1px; }
+
+/* 菜单字段 */
+.vb-field-select {
+  font: inherit; font-size: 12px; padding: 1px 4px; max-width: 190px;
+  border: 0; border-radius: 4px; background: rgba(255, 255, 255, .92); color: #1e2330;
+  outline: none; cursor: pointer;
+}
+
+/* 容器槽（C 型） */
+.vb-body {
+  margin: 6px 0 2px 14px; padding: 6px; min-width: 130px;
+  background: rgba(0, 0, 0, .16); border-radius: 8px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+}
+.vb-body-elseBody { border-left: 3px solid rgba(255, 255, 255, .35); }
+.vb-body.vb-drop-target { outline: 2px dashed rgba(255, 255, 255, .85); outline-offset: 2px; }
+.vb-body-hint { font-size: 11px; opacity: .72; padding: 3px 5px; }
+
+/* ---- 右：属性 ---- */
+.visual-side {
+  width: 300px; flex: 0 0 300px; border-left: 1px solid var(--border);
+  background: var(--panel); overflow: auto; padding: 12px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.vb-side-title { font-size: 12.5px; font-weight: 650; margin-bottom: 5px; display: flex; align-items: center; gap: 6px; }
+.vb-side-desc { font-size: 12px; color: var(--text-2); margin: 0 0 6px; line-height: 1.55; }
+.vb-side-hint { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin: 4px 0 0; }
+.vb-side-warn {
+  font-size: 11.5px; color: #8a5a00; background: var(--warn-soft);
+  border: 1px solid #f2dfb6; border-radius: 7px; padding: 7px 9px; margin: 6px 0; line-height: 1.5;
+}
+.vb-side-stat { border-top: 1px solid var(--border); padding-top: 10px; }
+.vb-stat-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; color: var(--text-2); padding: 3px 0;
+}
+.vb-stat-row strong { font-family: var(--mono); font-size: 12px; color: var(--text); }
+
+.vb-code {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  background: var(--panel-3); border: 1px solid var(--border); border-radius: 7px;
+  padding: 9px; margin: 6px 0 0; max-height: 340px; overflow: auto;
+  /* 换行显示而不是横向滚动 —— 右栏就那么宽，横向滚动条看不到，
+     生成的 Java 一行常常比栏宽，截断后没法核对。 */
+  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2);
+}
+.vb-code-input { font-family: var(--mono); font-size: 12px; min-height: 130px; resize: vertical; }
+
+/* 代码造积木 / 库管理 */
+.vb-custom-form { display: flex; flex-direction: column; gap: 10px; }
+.vb-param-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.vb-param-row > span { font-size: 12px; color: var(--text-2); }
+.vb-params { display: flex; flex-wrap: wrap; gap: 5px; min-height: 20px; }
+.vb-param-chip {
+  font-size: 11.5px; font-family: var(--mono); padding: 2px 7px; border-radius: 5px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.vb-lib-list { display: flex; flex-direction: column; gap: 8px; }
+.vb-lib-item {
+  display: flex; flex-direction: column; gap: 2px; padding: 9px 11px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+}
+.vb-lib-name { display: flex; align-items: baseline; gap: 5px; }
+.vb-lib-add { display: flex; gap: 7px; margin-top: 6px; flex-wrap: wrap; }
+.vb-from-jar { display: flex; flex-direction: column; gap: 10px; }
+.vb-jar-result { display: flex; flex-direction: column; gap: 6px; }
+
+/* 导出自定义积木的勾选列表 */
+.vb-export-list {
+  display: flex; flex-direction: column; gap: 5px;
+  max-height: 320px; overflow: auto; margin: 8px 0;
+}
+.vb-export-item {
+  display: flex; align-items: baseline; gap: 7px; padding: 7px 9px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel-2);
+  cursor: pointer; font-size: 12.5px;
+}
+.vb-export-item:hover { border-color: var(--accent); }
+.vb-export-name { font-weight: 600; }
+
+/* ---------- 入门向导 ---------- */
+/* 向导住在左栏最上面，讲的每一步都是「点左边哪儿」，
+   放在积木盒上面，用户上下扫一眼就能对照着做。 */
+.vb-guide-host { flex: 0 0 auto; }
+.vb-guide {
+  margin: 10px 10px 2px; padding: 11px 12px 10px;
+  border: 1px solid var(--accent); border-radius: 10px;
+  background: var(--accent-soft);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .12);
+  /* 限高 + 可滚 —— 向导开着的时候，积木盒还得留得下位置，
+     不然小朋友想照着找积木，左边却只剩个标题。 */
+  max-height: 48vh; overflow: auto;
+}
+.vb-guide-head { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.vb-guide-count { font-size: 11px; color: var(--accent); font-weight: 600; }
+.vb-guide-close {
+  margin-left: auto; width: 20px; height: 20px; line-height: 1; font-size: 12px;
+  border: 0; border-radius: 5px; background: transparent; color: var(--text-3); cursor: pointer;
+}
+.vb-guide-close:hover { background: rgba(0, 0, 0, .08); }
+.vb-guide-dots { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 8px; }
+.vb-guide-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--border); cursor: pointer;
+}
+.vb-guide-dot.done { background: var(--accent); opacity: .45; }
+.vb-guide-dot.on { background: var(--accent); transform: scale(1.35); }
+.vb-guide-title { font-size: 13px; font-weight: 700; color: var(--text-1); margin-bottom: 5px; }
+.vb-guide-body { font-size: 12.5px; line-height: 1.6; color: var(--text-2); }
+.vb-guide-body b { color: var(--text-1); }
+.vb-guide-tip {
+  margin-top: 7px; font-size: 11.5px; line-height: 1.5; color: var(--text-3);
+  padding-left: 8px; border-left: 2px solid var(--border);
+}
+.vb-guide-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.vb-guide-do { background: var(--accent); color: #fff; border-color: var(--accent); }
+.vb-guide-skip {
+  display: block; margin: 8px auto 0; padding: 0; border: 0; background: none;
+  font-size: 11px; color: var(--text-3); cursor: pointer; text-decoration: underline;
+}
+.vb-guide-skip:hover { color: var(--text-1); }

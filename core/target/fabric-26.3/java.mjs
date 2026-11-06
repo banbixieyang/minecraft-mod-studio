@@ -44,8 +44,12 @@ export function genMainClass(p) {
   const pkg = p.meta.pkg;
   const hasBlocks = (p.entries.block || []).length > 0;
   const hasWorldgen = (p.entries.worldgen || []).length > 0;
+  const hasVisual = (p.visual?.programs || []).length > 0;
   const worldgenImport = hasWorldgen ? `import ${pkg}.world.ModWorldGen;\n` : '';
   const worldgenCall = hasWorldgen ? '        ModWorldGen.init();\n' : '';
+  // 有积木程序时，把接线挂进 onInitialize
+  const visualImport = hasVisual ? `import ${pkg}.custom.ModLogic;\n` : '';
+  const visualCall = hasVisual ? '        ModLogic.init();\n' : '';
   return `package ${pkg};
 
 import ${pkg}.registry.ModArmorMaterials;
@@ -53,7 +57,7 @@ ${hasBlocks ? `import ${pkg}.registry.ModBlocks;\n` : ''}import ${pkg}.registry.
 import ${pkg}.registry.ModTabs;
 import ${pkg}.registry.ModTiers;
 import ${pkg}.custom.CustomContent;
-${worldgenImport}import net.fabricmc.api.ModInitializer;
+${visualImport}${worldgenImport}import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,7 +82,7 @@ public class ${cls} implements ModInitializer {
         ModArmorMaterials.init();
 ${hasBlocks ? '        ModBlocks.init();\n' : ''}        ModItems.init();
         ModTabs.init();
-${worldgenCall}        CustomContent.init();
+${worldgenCall}${visualCall}        CustomContent.init();
         // @hook:init
         LOGGER.info("[${p.meta.id}] 已加载 {} 个物品${hasBlocks ? ' / {} 个方块' : ''}",
                 ModItems.all().size()${hasBlocks ? ', ModBlocks.all().size()' : ''});

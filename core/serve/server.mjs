@@ -24,6 +24,7 @@ import { openInBlockbench, writeBbmodel } from './blockbench.mjs';
 import { handleExtras } from './routes_extras.mjs';
 import { handleKnowledge } from './routes_kb.mjs';
 import { handleHooks } from './routes_hooks.mjs';
+import { handleVisual } from './routes_visual.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIR = path.resolve(HERE, '../../ui');
@@ -149,6 +150,12 @@ async function handleApi(req, res, route, q, url) {
   // 代码钩子（AI / 学习中心的代码块经预览确认后落到这里）
   if (route.startsWith('hooks/')) {
     const handled = await handleHooks(req, res, route, q);
+    if (handled !== false) return;
+  }
+
+  // 可视化积木
+  if (route.startsWith('visual/')) {
+    const handled = await handleVisual(req, res, route, q, method);
     if (handled !== false) return;
   }
 

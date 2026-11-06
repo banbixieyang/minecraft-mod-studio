@@ -13,6 +13,7 @@ import { renderAnalyzePanel } from './analyze.js';
 import { renderInspectPanel } from './inspect.js';
 import { renderKnowledgePanel, openKnowledgeDoc } from './knowledge.js';
 import { renderAiPanel, setAiDraft } from './ai.js';
+import { renderVisualPanel, openVisualGuide } from './visual.js';
 import { openHookInstall } from './hookinstall.js';
 
 const LS_KEY = 'mcstudio.lastProject';
@@ -66,9 +67,16 @@ async function resolveGuideId(rel, keywords = []) {
   return hit?.id || null;
 }
 
-function startCard(title, sub, linkText, docRel, keywords = []) {
+/**
+ * 欢迎页的上手卡。
+ *
+ * 默认跳到知识库对应的教程章节；传了 onClick 就走自己的动作
+ * （积木那张卡想让人直接进编辑器，而不是先读一篇文档）。
+ */
+function startCard(title, sub, linkText, docRel, keywords = [], onClick = null) {
   return el('button.start-card', {
     onclick: async () => {
+      if (onClick) { onClick(); return; }
       const docId = await resolveGuideId(docRel, keywords);
       if (docId) openKnowledgeDoc(docId);
       state.view = 'knowledge';
@@ -242,13 +250,20 @@ function renderWelcome() {
           el('p.note', {}, `工程目录：${state.health.projectsDir}`),
         )),
         // 上手引导：第一次用的人最需要的就是「我该点哪里」。
-        // 三张卡对应三条主路，每张都直接跳到对应的教程章节。
+        // 四张卡对应四条主路，每张都直接跳到对应的教程章节。
         el('div.start-here', {},
           el('h2.start-here-title', { text: '第一次来？先看这几条路' }),
           el('div.start-here-grid', {},
-            startCard('① 我要做自己的模组', '填表单 → 生成 → 构建 jar', '从零到出 jar', '01-从零到出jar', ['从零到出']),
-            startCard('② 我想拆别人的模组', '导入 jar → 逐项研究 → 改数值', '拆解别人的 mod', '06-拆解别人的mod', ['拆解别人的']),
-            startCard('③ 我想要一份完整手册', '五个区域、每个功能怎么走', '使用手册', '00-使用手册', ['使用手册']),
+            // 积木那张放第一位 —— 它是最不需要会编程的那条路。
+            // 直接进编辑器并打开入门向导，而不是先让人读一篇文档。
+            startCard('① 我想用积木搭', '拖积木写逻辑，生成真 Java', '积木编程入门 →', '07-积木编程', ['积木'], () => {
+              state.view = 'visual';
+              renderWorkspace();
+              openVisualGuide();
+            }),
+            startCard('② 我要做自己的模组', '填表单 → 生成 → 构建 jar', '从零到出 jar', '01-从零到出jar', ['从零到出']),
+            startCard('③ 我想拆别人的模组', '导入 jar → 逐项研究 → 改数值', '拆解别人的 mod', '06-拆解别人的mod', ['拆解别人的']),
+            startCard('④ 我想要一份完整手册', '六个区域、每个功能怎么走', '使用手册', '00-使用手册', ['使用手册']),
           ),
         ),
         el('div.welcome-foot', {}, el('span', { text: `引擎 v${state.health.version} · Node ${state.health.node} · ${state.health.java.ok ? 'JDK ' + state.health.java.version : '未检测到 JDK'}` })),
@@ -269,8 +284,8 @@ function renderWorkspace() {
 
   const header = renderHeader();
 
-  // 库、分析、学习、AI 是整屏面板，占掉侧栏+编辑+检查器三栏的位置
-  if (['library', 'analyze', 'knowledge', 'ai', 'inspect'].includes(state.view)) {
+  // 库、分析、学习、AI、积木 是整屏面板，占掉侧栏+编辑+检查器三栏的位置
+  if (['library', 'analyze', 'knowledge', 'ai', 'inspect', 'visual'].includes(state.view)) {
     const go = (v) => {
       state.view = v;
       renderWorkspace();
@@ -309,9 +324,11 @@ function renderWorkspace() {
           ? renderAnalyzePanel(ctx)
           : state.view === 'inspect'
             ? renderInspectPanel(ctx)
-            : state.view === 'knowledge'
-              ? renderKnowledgePanel(ctx)
-              : renderAiPanel(ctx);
+            : state.view === 'visual'
+              ? renderVisualPanel(ctx)
+              : state.view === 'knowledge'
+                ? renderKnowledgePanel(ctx)
+                : renderAiPanel(ctx);
     setChildren(app, el('div.workspace-root', {}, header, el('div.workspace-body.single', {}, panel)));
     return;
   }
@@ -345,9 +362,10 @@ function renderHeader() {
       {},
       el('div.brand', {}, el('div.brand-mark.small', { text: 'MC' }), el('span', { text: 'Studio' })),
       el('span.muted.small', { text: '未打开工程' }),
-      el('div.spacer'),
-      el('button.btn.ghost', { title: '内置教程、26.3 速查、任务卡', onclick: () => goView('knowledge') }, '学习'),
-      el('button.btn.ghost', { title: '完整使用手册：五个区域、每条路怎么走', onclick: () => openManual() }, '手册'),
+    el('div.spacer'),
+    el('button.btn.ghost', { title: '像搭积木一样写代码，生成真 Java', onclick: () => goView('visual') }, '积木'),
+    el('button.btn.ghost', { title: '内置教程、26.3 速查、任务卡', onclick: () => goView('knowledge') }, '学习'),
+      el('button.btn.ghost', { title: '完整使用手册：六个区域、每条路怎么走', onclick: () => openManual() }, '手册'),
       el('button.btn.ghost', {
         title: '回到首页',
         onclick: () => {
@@ -374,10 +392,11 @@ function renderHeader() {
     el('span.target-pill', { text: `${p.target.platform} ${p.target.mcVersion}` }),
     el('span.muted.small', { text: `${counts} 个内容` }),
     el('div.spacer'),
-    el('button.btn.ghost', { title: '攒下来的效果和内容', onclick: () => goView('library') }, '库'),
+    el('button.btn.ghost', { title: '积木库、拆解台、分析外部 mod', onclick: () => goView('library') }, '库'),
+    el('button.btn.ghost', { title: '像搭积木一样写代码，生成真 Java', onclick: () => goView('visual') }, '积木'),
     el('button.btn.ghost', { title: '拆开一个现成的 mod，把能用的留下来', onclick: () => goView('analyze') }, '分析'),
     el('button.btn.ghost', { title: '内置教程、26.3 速查、任务卡', onclick: () => goView('knowledge') }, '学习'),
-    el('button.btn.ghost', { title: '完整使用手册：五个区域、每条路怎么走', onclick: () => openManual() }, '手册'),
+    el('button.btn.ghost', { title: '完整使用手册：六个区域、每条路怎么走', onclick: () => openManual() }, '手册'),
     el('button.btn.ghost', { title: '让 AI 帮你写，它会查知识库', onclick: () => goView('ai') }, 'AI'),
     el('button.btn.ghost', { onclick: () => runPreflight() }, '校验'),
     el('button.btn.ghost', { onclick: () => openCodeBrowser() }, '代码'),

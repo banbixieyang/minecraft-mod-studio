@@ -15,6 +15,7 @@ import { getTargetFor } from '../target/registry.mjs';
 import { loadProject, recordGenerated, wasHandEdited, saveProject } from '../project.mjs';
 import { genAssets, genData } from './resources.mjs';
 import { genTextures } from './textures.mjs';
+import { genVisual } from './visual.mjs';
 import { listContentTypes, loadGenerator } from '../modules/registry.mjs';
 import { applyJavaHooks, runJsHooks } from '../hooks/hooks.mjs';
 
@@ -65,6 +66,9 @@ export async function collect(p, opts = {}) {
 
   // 5. 手写区（只在缺失时创建）
   push(adapter.handWritten(p));
+
+  // 5.5 可视化积木编译产物
+  push(genVisual(p, adapter));
 
   // 6. 模块自带的额外产出
   const langFiles = {

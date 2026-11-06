@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { toPascal } from '../../ids.mjs';
 import * as java from './java.mjs';
+import * as visual from './visual.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WRAPPER_DIR = path.join(HERE, 'wrapper');
@@ -61,6 +62,13 @@ export default {
     const t = p.target;
     const files = [];
 
+    // 本地 mod 依赖（积木库要求某个 mod 时用）
+    // ⚠️ 用 compileOnly：这些 jar 只是编译期需要，运行期由玩家自己装。
+    const localDeps = (p.localDeps || [])
+      .filter((d) => d && d.path)
+      .map((d) => `    compileOnly files('${String(d.path).replace(/\\/g, '/')}')`)
+      .join('\n');
+
     files.push({
       path: 'settings.gradle',
       content: `pluginManagement {
@@ -95,6 +103,7 @@ dependencies {
     // 26.1 起 Minecraft 不再混淆，Mojang 官方类名直接可用，因此没有 mappings 行
     implementation "net.fabricmc:fabric-loader:\${loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:\${fabric_api_version}"
+${localDeps}
 }
 
 processResources {
@@ -226,5 +235,10 @@ ${opts.clientModsDir ? `\nclient_mods_dir=${opts.clientModsDir}\n` : ''}`,
   handWritten(p) {
     const dir = `src/main/java/${p.meta.pkg.replace(/\./g, '/')}`;
     return [{ path: `${dir}/custom/CustomContent.java`, content: java.genCustomContent(p), createOnly: true }];
+  },
+
+  /** 可视化积木的事件接线 */
+  visualWiring(p, info) {
+    return visual.visualWiring(p, info);
   },
 };

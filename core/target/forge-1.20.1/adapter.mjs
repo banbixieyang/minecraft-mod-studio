@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { toPascal } from '../../ids.mjs';
 import * as java from './java.mjs';
+import * as visual from './visual.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WRAPPER_DIR = path.join(HERE, 'wrapper');
@@ -73,6 +74,14 @@ export default {
     const desc = clean(p.meta.description) || `${p.meta.name} —— 由 MC Studio 生成`;
     const license = clean(p.meta.license) || 'MIT';
 
+    // 本地 mod 依赖（积木库要求某个 mod 时用）
+    // ⚠️ 用 compileOnly：这些 jar 只是编译期需要，运行期由玩家自己装。
+    //    路径里的反斜杠要转成斜杠（Gradle 在 Windows 上也吃斜杠）。
+    const localDeps = (p.localDeps || [])
+      .filter((d) => d && d.path)
+      .map((d) => `    compileOnly files('${String(d.path).replace(/\\/g, '/')}')`)
+      .join('\n');
+
     files.push({
       path: 'settings.gradle',
       content: `pluginManagement {
@@ -128,6 +137,7 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 dependencies {
     minecraft "net.minecraftforge:forge:\${minecraft_version}-\${forge_version}"
+${localDeps}
 }
 
 tasks.named('processResources', ProcessResources).configure {
@@ -260,5 +270,10 @@ description='''\${mod_description}'''
   handWritten(p) {
     const dir = `src/main/java/${p.meta.pkg.replace(/\./g, '/')}`;
     return [{ path: `${dir}/custom/CustomContent.java`, content: java.genCustomContent(p), createOnly: true }];
+  },
+
+  /** 可视化积木的事件接线 */
+  visualWiring(p, info) {
+    return visual.visualWiring(p, info);
   },
 };

@@ -1,0 +1,280 @@
+# 可视化编程（积木系统）实施计划
+
+> 目标：在 MC Studio 里加一套 Scratch 式嵌套积木编辑器。
+> 积木能编译成**真实可编译的 Java**；反过来贴一段 Java 也能尽力解析回积木。
+> 常用逻辑、Goety 三包、任意 mod 的内容，都能打包成可加载的积木库。
+> 任何人写的一段代码，也能封装成一个可复用的积木块。
+
+---
+
+## 1. 目标与验收标准
+
+### 1.1 功能目标
+
+| # | 目标 | 验收标准 |
+|---|---|---|
+| G1 | 嵌套积木编辑器 | 拖拽积木、上下插槽嵌套、点数字/文本可改、积木可删除可复制 |
+| G2 | 积木 → Java | 编译产物是**真能过编译的 Java**，落在 `custom/CustomContent.java` 或独立方法体里 |
+| G3 | Java → 积木 | 贴一段 Java，尽力解析成积木；解析不了的部分保留原文，不报错 |
+| G4 | 内置常用积木库 | 玩家/世界/物品/方块/变量/流程/文本 等类别开箱可用 |
+| G5 | Goety 三包转积木库 | 92 状态效果 + 125 法术 + 1600 数值 → 可加载的 `.mcblocks.json` 库 |
+| G6 | 任意 mod 自动转库 | 分析器对任意 mod 都能导出「可拖拽的积木库」，机制通用不只 Goety |
+| G7 | 从代码反向造积木 | 用户选一段 Java + 定义输入输出，封装成自定义积木块，可复用、可分享 |
+| G8 | 积木库可加载 | 库文件能装进工程，也能从包库/文件系统导入导出 |
+| G9 | 代码编辑不受影响 | 原有手写代码路径完全不变，积木是**并行**的第二条路 |
+
+### 1.2 非目标（明确不做）
+
+- 不做完整的 Scratch 语义（克隆体、广播、角色）。只做**事件驱动的逻辑积木**。
+- 不做多语言代码生成（只有 Java + JS 钩子）。
+- 不做在线积木市场。
+
+---
+
+## 2. 平台 + 版本 + 时代理由
+
+| 项 | 值 | 理由 |
+|---|---|---|
+| 目标平台 | Fabric 26.3（主）+ Forge 1.20.1（次） | 工具已支持这两个目标，积木必须两边都能编译 |
+| 积木生成语言 | Java | 两个目标都是 Java 模组，生成的代码得能直接编译 |
+| JS 钩子 | 保持现有 | JS 钩子已在管线阶段运行，不与积木冲突 |
+
+**关键约束**：积木编译出的 Java 必须**跟着目标走**。Fabric 26.3 与 Forge 1.20.1 的 API 不同
+（`ServerPlayer` vs `Player`、`ItemStack` 构造不同、事件类不同）。
+因此积木定义不能写死 API，必须**由目标适配器提供 Java 片段模板**。
+
+---
+
+## 3. 文件归属表
+
+### 3.1 新增：引擎层（`core/visual/`）
+
+| 文件 | 职责 |
+|---|---|
+| `core/visual/model.mjs` | 积木数据结构定义 + 校验（积木树、输入槽、嵌套） |
+| `core/visual/blocks.mjs` | **积木定义注册表**：积木 id → 定义（类别、形状、参数、Java 模板） |
+| `core/visual/compile.mjs` | **积木 → Java** 编译器 |
+| `core/visual/decompile.mjs` | **Java → 积木** 反编译器（尽力而为） |
+| `core/visual/library.mjs` | 积木库格式（`.mcblocks.json`）的读写、装库、导出 |
+| `core/visual/builtin.mjs` | 内置常用积木库定义 |
+| `core/visual/registry.mjs` | 库注册表：内置库 + 工程库 + 用户库，三层查找 |
+
+### 3.2 新增：界面层（`ui/`）
+
+| 文件 | 职责 |
+|---|---|
+| `ui/visual.js` | 积木编辑器面板：画布、积木库抽屉、属性编辑 |
+| `ui/visual-blocks.js` | 积木的 DOM 渲染与拖拽交互 |
+| `ui/visual-style.css`（并入 `style.css`） | 积木样式 |
+
+### 3.3 新增：目标适配器扩展
+
+| 文件 | 职责 |
+|---|---|
+| `core/target/fabric-26.3/blocks.mjs` | Fabric 26.3 的 Java 模板（Player/ServerPlayer/ServerLevel/ItemStack…） |
+| `core/target/forge-1.20.1/blocks.mjs` | Forge 1.20.1 的 Java 模板 |
+
+### 3.4 修改：既有文件
+
+| 文件 | 改动 |
+|---|---|
+| `core/project.mjs` | 工程数据加 `visual: { programs: [], libraries: [] }` 字段 |
+| `core/serve/routes_visual.mjs` | **新建** HTTP 入口（积木列表、编译、装库、反编译） |
+| `core/serve/server.mjs` | 注册 `visual/*` 路由 |
+| `core/generator/pipeline.mjs` | 生成阶段把积木编译产物写进 `custom/CustomContent.java` |
+| `core/target/registry.mjs` | 暴露每个目标的积木模板 |
+| `ui/app.js` | 顶栏加「积木」按钮，打开积木面板 |
+| `ui/api.js` | 加 `visual.*` API 封装 |
+| `core/analyze/report.mjs` | 导出「积木库」的能力（任意 mod → 积木库） |
+
+### 3.5 新增：工具与测试
+
+| 文件 | 职责 |
+|---|---|
+| `tools/export-block-library.mjs` | 把 Goety 三包（或任意 mod）导出成 `.mcblocks.json` |
+| `tests/visual.mjs` | 积木引擎单元测试 |
+| `tests/visual-build.mjs` | 积木 → Java → **真跑 Gradle 编译** |
+
+---
+
+## 4. 积木模型（核心数据结构）
+
+积木用**树 + 序列**双结构（Scratch 的经典做法）：
+
+```js
+{
+  op: 'mc.player.message',      // 积木定义 id
+  inputs: {                      // 输入槽（可以嵌套另一个积木）
+    target: { type: 'value', value: 'player' },
+    text:   { type: 'value', value: '你好' },
+  },
+  fields: {                      // 下拉/开关等常量槽
+    mode: 'chat',
+  },
+  body: [                        // 容器型积木（C 形）的子积木序列
+    { op: 'mc.player.heal', inputs: { amount: { type: 'value', value: 5 } } },
+  ],
+  next: null,                    // 语句积木的下一块
+}
+```
+
+**形状**（决定能否嵌套）：
+
+| shape | 形态 | 例子 |
+|---|---|---|
+| `hat` | 帽形（事件起点） | `当玩家右键方块时` |
+| `stack` | 积木（语句） | `给玩家 5 点生命` |
+| `reporter` | 圆角（值） | `玩家当前生命值` |
+| `boolean` | 六边形（条件） | `玩家生命值 < 20` |
+
+**规则**：
+- `stack` 可以接 `next`；`reporter`/`boolean` 可以塞进 `inputs`。
+- `hat` 是一段程序的根。
+- 积木不能循环嵌套自己（`body` 里不允许出现同一 op 的 hat）。
+
+---
+
+## 5. 积木定义格式
+
+一个积木定义（block definition）：
+
+```js
+{
+  id: 'mc.player.message',
+  category: 'player',
+  shape: 'stack',
+  label: '对 %1 说话：%2',
+  // 参数定义
+  inputs: [
+    { name: 'target', kind: 'entity', default: 'player' },
+    { name: 'text',   kind: 'text',   default: '你好' },
+  ],
+  fields: [
+    { name: 'mode', kind: 'menu', options: ['chat','actionbar','title'], default: 'chat' },
+  ],
+  // Java 生成模板（按目标适配器分派）
+  java: {
+    'fabric-26.3': 'target.sendMessage(Text.literal(%text), false);',
+    'forge-1.20.1': 'target.displayClientMessage(Component.literal(%text), false);',
+  },
+}
+```
+
+**关键设计**：模板里的 `%name` 占位符由编译器替换成 Java 表达式。
+- 文本参数 → `"字面量"`（自动转义）
+- 数字参数 → `5.0`
+- 嵌套积木 → 递归编译出的表达式
+- 菜单字段 → 通过 `switch` 或常量映射
+
+`body` 型积木用 `%body` 占位符插入子积木的编译结果。
+
+---
+
+## 6. Java → 积木（反编译，尽力而为）
+
+策略：**基于积木定义库做模式匹配**，不是通用 Java 解析器。
+
+1. 把 Java 源码切成语句行。
+2. 对每行，用积木定义里 `java` 模板做反向匹配（把模板里的 `%x` 当通配正则）。
+3. 匹配上 → 生成对应积木；匹配不上 → 保留原文，插入「原始代码」积木（一个能装任意 Java 语句的积木）。
+4. 递归处理嵌套：匹配到的参数位置若含嵌套积木，继续匹配。
+
+**保证**：反编译永不失败、永不丢代码。解析不了的部分用「原始代码」积木兜住，用户在界面里仍能编辑。
+
+---
+
+## 7. 积木库格式（`.mcblocks.json`）
+
+```js
+{
+  "format": "mcblocks",
+  "version": 1,
+  "name": "Goety 基础库",
+  "id": "goety-base",
+  "description": "92 个状态效果、125 个法术、1600+ 可调数值",
+  "source": { "type": "mod", "modId": "goety", "mcVersion": "1.20.1" },
+  "categories": [
+    { "id": "spell", "label": "法术", "icon": "✦" },
+    { "id": "statusEffect", "label": "状态效果", "icon": "☠" },
+  ],
+  "blocks": [ /* 积木定义数组 */ ],
+}
+```
+
+**装库位置**（三层查找，先到先得）：
+1. 内置库（`knowledge/blocks/` 或代码内）
+2. 工程库（`<工程>/.studio/blocks/`）
+3. 用户库（`~/.mcstudio/blocks/`）
+
+---
+
+## 8. 积木 → 代码的落点
+
+**编译产物形态**：`custom/CustomContent.java`（`createOnly`，手写区，重生成不覆盖）。
+
+原因：
+- 用户可以在编译后**继续手改** Java，积木和手写能共存。
+- 每次生成时把积木编译结果写进一个**独立区段**（带标记），不覆盖用户手写部分。
+
+```java
+public final class CustomContent {
+    // ==== MC Studio 积木生成区 开始 ====
+    public static void program_player_rightclick_block(BlockState state, ServerPlayer player) {
+        // 积木：给玩家 5 点生命
+        player.heal(5.0F);
+    }
+    // ==== MC Studio 积木生成区 结束 ====
+}
+```
+
+**事件接线**：帽形积木（hat）定义自己的触发点（`rightclick_block` / `tick` / `attack` / `break_block`），
+编译器生成对应方法，方法名固定为 `program_<事件>_<序号>`，并生成注册代码插进 `CustomContent.init()`。
+
+---
+
+## 9. API 点与来源（不许凭记忆）
+
+| API | 来源 | 状态 |
+|---|---|---|
+| `ServerPlayer#sendMessage(Text, boolean)` | Fabric 26.3 API（`net.minecraft.server.network.ServerPlayer`） | 需编译验证 |
+| `Player#displayClientMessage(Component, boolean)` | Forge 1.20.1（`net.minecraft.network.chat.Component`） | 需编译验证 |
+| `LivingEntity#heal(float)` | 两版同名 | 需编译验证 |
+| `ServerLevel#getBlockState(BlockPos)` | 两版同名 | 需编译验证 |
+| `ItemStack` 构造 | 两版不同 | 需编译验证 |
+| 事件回调签名 | Fabric `AttackEntityCallback` / Forge `AttackEntityEvent` | 需编译验证 |
+
+**规则**：所有签名在 `tests/visual-build.mjs` 里**真跑 Gradle 编译**验证。
+编译不过的积木标 `UNVERIFIED` 并在界面上标灰，不假装能用。
+
+---
+
+## 10. 风险清单
+
+| 风险 | 影响 | 对策 |
+|---|---|---|
+| 两目标 API 差异大 | 积木在另一目标编译失败 | 模板按目标分派；每个目标都跑真编译 |
+| 积木定义爆炸式增长 | 维护成本高 | 定义用模板 + 数据驱动，别手写一堆 if |
+| 反编译准确率不高 | 用户体验差 | 兜底「原始代码」积木，永不丢代码 |
+| 拖拽交互在无框架下难写 | 前端复杂度高 | 纯 DOM + Pointer Events，不引入框架 |
+| 积木库 schema 演进 | 老库失效 | 带 `version` 字段 + 迁移函数 |
+| 事件签名随版本变 | 编译失败 | 每个目标独立维护 `blocks.mjs`，编译验证兜底 |
+
+---
+
+## 11. 阶段划分
+
+| 阶段 | 产出 | 判据 |
+|---|---|---|
+| A 规划 | 本文件 | 文件归属表、API 来源、风险清单齐全 |
+| B 骨架 | `core/visual/*` 模型 + 编译器 + 库格式 | 单元测试通过，能编译出正确 Java |
+| C 内容 | 内置库 + Goety 库 + 界面 | 界面能拖、能编译、库能装 |
+| D 验证 | 构建报告 | 两个目标都真跑 Gradle 编译通过，无残留 TODO |
+
+---
+
+## 12. 决策记录（已与用户确认）
+
+1. **积木形态**：嵌套积木（Scratch 式）
+2. **代码落地形态**：独立方法体（编译产物在 `custom/CustomContent.java` 的独立区段）
+3. **库来源**：常用积木（内置）+ Goety 三包转库 + 任意 mod 分析自动转库 + 从代码反向造积木
+4. **双向要求**：积木→代码（必须正确）+ 代码→积木（尽力而为，不丢代码）

@@ -68,10 +68,11 @@ function defaultSpeed(type) {
 export function genMainClass(p) {
   const cls = toPascal(p.meta.id);
   const pkg = p.meta.pkg;
+  const hasVisual = (p.visual?.programs || []).length > 0;
   return `package ${pkg};
 
 import ${pkg}.custom.CustomContent;
-import ${pkg}.registry.ModBlocks;
+${hasVisual ? `import ${pkg}.custom.ModLogic;\n` : ''}import ${pkg}.registry.ModBlocks;
 import ${pkg}.registry.ModItems;
 import ${pkg}.registry.ModTabs;
 import com.mojang.logging.LogUtils;
@@ -99,7 +100,7 @@ public class ${cls} {
         ModBlocks.register(bus);
         ModTabs.register(bus);
         MinecraftForge.EVENT_BUS.register(this);
-        CustomContent.init(bus);
+${hasVisual ? '        ModLogic.init();\n' : ''}        CustomContent.init(bus);
         // @hook:init
         LOGGER.info("[${p.meta.id}] 已加载");
     }

@@ -196,15 +196,53 @@ try {
   })()`));
 
   record('首页上手卡片', `${cards.length} 张：${cards.map((c) => c.title).join(' / ')}`);
-  if (cards.length !== 3) {
-    problems.push({ kind: '界面', text: `上手卡片应该是 3 张，实际 ${cards.length} 张` });
+  if (cards.length !== 4) {
+    problems.push({ kind: '界面', text: `上手卡片应该是 4 张，实际 ${cards.length} 张` });
   }
-  for (const need of ['自己的模组', '拆别人', '手册']) {
+  for (const need of ['积木', '自己的模组', '拆别人', '手册']) {
     if (!cards.some((c) => c.title.includes(need))) {
       problems.push({ kind: '界面', text: `上手卡片里缺了包含「${need}」的那张` });
     }
   }
+  // 积木那张要排第一 —— 它是最不需要会编程的那条路
+  if (cards[0] && !cards[0].title.includes('积木')) {
+    problems.push({ kind: '界面', text: `上手卡第一张是「${cards[0].title}」，应该是「积木」` });
+  }
   await shot('tutorial-home');
+
+  // ---- 1b. 积木那张卡：不是跳文档，是直接进编辑器并打开向导 ----
+  {
+    await evaluate(`(() => {
+      localStorage.removeItem('mcstudio.lastProject');
+      location.reload();
+      return true;
+    })()`);
+    await sleep(900);
+    await waitFor(() => evaluate(`!!document.querySelector('.start-card')`), 25000);
+
+    const clicked = await evaluate(`(() => {
+      const cards = [...document.querySelectorAll('.start-card')];
+      const t = cards.find(c => ((c.querySelector('.start-card-title')?.textContent) || '').includes('积木'));
+      if (!t) return false;
+      t.click();
+      return true;
+    })()`);
+    if (!clicked) {
+      problems.push({ kind: '界面', text: '点不到「积木」那张卡' });
+    } else {
+      await sleep(1500);
+      const g = await evaluate(`(() => ({
+        panel: !!document.querySelector('.visual-panel'),
+        guide: !!document.querySelector('.vb-guide'),
+        steps: document.querySelectorAll('.vb-guide-dot').length,
+      }))()`);
+      if (!g.panel) problems.push({ kind: '界面', text: '点了「积木」卡，没进积木编辑器' });
+      if (!g.guide) problems.push({ kind: '界面', text: '点了「积木」卡，入门向导没打开' });
+      else if (g.steps < 10) problems.push({ kind: '界面', text: `入门向导只有 ${g.steps} 步，不对` });
+      record('卡片跳转 · 积木', g.guide ? `进编辑器并打开向导（${g.steps} 步）` : '✗ 向导没打开');
+      await shot('tutorial-blocks');
+    }
+  }
 
   // ---- 2~4. 三张卡逐个点开 ----
   // 每张卡对应一篇文档，点开必须真的打开那一篇 —— 打不开就是「打不开」错误页。

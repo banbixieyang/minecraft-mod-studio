@@ -231,4 +231,26 @@ export const api = {
   hooksAdd: (body) => request('POST', '/api/hooks/add', body),
   hooksRemove: (body) => request('POST', '/api/hooks/remove', body),
   aiChatStream,
+
+  // ---------- 可视化积木 ----------
+  /** 积木清单（按分类） */
+  visualBlocks: (root, targetId) => request('GET', `/api/visual/blocks${qs({ root, targetId })}`),
+  /** 已装的积木库 */
+  visualLibraries: (root) => request('GET', `/api/visual/libraries${qs({ root })}`),
+  /** 读工程的积木程序 */
+  visualProgram: (root) => request('GET', `/api/visual/program${qs({ root })}`),
+  /** 保存工程的积木程序 */
+  saveVisualProgram: (root, programs) => request('PUT', '/api/visual/program', { root, programs }),
+  /** 编译预览 */
+  visualCompile: (body) => request('POST', '/api/visual/compile', body),
+  /** Java → 积木 */
+  visualDecompile: (body) => request('POST', '/api/visual/decompile', body),
+  /** 代码造积木 */
+  visualCustomBlock: (body) => request('POST', '/api/visual/custom-block', body),
+  /** 导出自定义积木为库 */
+  visualExportBlocks: (ids) => request('POST', '/api/visual/export-blocks', { ids }),
+  /** 装库（写盘，必须显式确认） */
+  visualInstallLibrary: (body) => request('POST', '/api/visual/install-library', body),
+  /** 从 mod jar 生成积木库 */
+  visualLibraryFromJar: (body) => request('POST', '/api/visual/library-from-jar', body),
 };

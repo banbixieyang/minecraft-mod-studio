@@ -265,6 +265,26 @@ try {
   await send('Page.navigate', { url: APP_URL });
   // 工程不止一个时会停在欢迎页，得先点进一个（优先 testmod）
   await waitFor(() => evaluate(`!!document.querySelector('.project-card, .nav-item')`), 20000);
+
+  // ---------- 欢迎页的上手卡 ----------
+  // 四条主路各一张卡，积木那张排第一（最不需要会编程的那条）。
+  // 这里只查「有几张卡、积木卡是不是第一张」，不点 —— 点了就进工程了。
+  {
+    const wc = await evaluate(`(() => {
+      const cards = [...document.querySelectorAll('.start-card')];
+      return {
+        n: cards.length,
+        titles: cards.map(c => c.querySelector('.start-card-title')?.textContent || ''),
+      };
+    })()`);
+    if (wc.n) {
+      record('00-欢迎页 上手卡有四张', wc.n === 4 ? '通过' : `只有 ${wc.n} 张`);
+      record('00-欢迎页 积木卡排第一', wc.titles[0]?.includes('积木') ? '通过' : `第一张是「${wc.titles[0]}」`);
+      if (wc.n !== 4) problems.push({ kind: '欢迎页', text: `上手卡只有 ${wc.n} 张，应为 4 张` });
+      if (!wc.titles[0]?.includes('积木')) problems.push({ kind: '欢迎页', text: '积木卡没排第一' });
+    }
+  }
+
   const entered = await evaluate(`(() => {
     if (document.querySelector('.nav-item')) return 'already';
     const cards = [...document.querySelectorAll('.project-card')];
@@ -1492,6 +1512,199 @@ try {
     problems.push({ kind: '界面', text: `有元素把子节点写进了属性位置（内容被静默丢掉）：${junk.slice(0, 3).join(' / ')}` });
   } else {
     record('12b-属性体检', '没有「子节点写进属性位置」这类静默丢失');
+  }
+
+  // ---------- 积木编辑器 ----------
+  // 覆盖：进视图 → 加事件 → 加语句 → 改参数 → 拖进容器 → 编译预览
+  {
+    const vb = await evaluate(`(async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const q = (s) => document.querySelector(s);
+      const qa = (s) => [...document.querySelectorAll(s)];
+      const out = {};
+
+      // 从顶栏进「积木」视图
+      const btn = qa('.app-bar button').find(b => b.textContent.trim() === '积木');
+      if (!btn) { out.err = '顶栏没有「积木」按钮'; return out; }
+      btn.click();
+      await sleep(2000);
+      out.panel = !!q('.visual-panel');
+      out.cats = qa('.vb-cat').length;
+      out.libItems = qa('.vb-palette-item').length;
+
+      // 展开事件分类，加一个事件帽
+      const evtHead = qa('.vb-cat-head').find(h => h.textContent.includes('事件'));
+      if (evtHead && !qa('.vb-palette-item').some(i => i.dataset.op?.startsWith('event.'))) {
+        evtHead.click(); await sleep(400);
+      }
+      const evt = qa('.vb-palette-item').find(i => i.dataset.op?.startsWith('event.'));
+      if (!evt) { out.err = '事件分类里没有事件积木'; return out; }
+      evt.click(); await sleep(800);
+      out.programs = qa('.vb-program').length;
+      out.hat = !!q('.vb-program-hat .vb');
+
+      // 加一条语句积木
+      const pHead = qa('.vb-cat-head').find(h => h.textContent.includes('玩家'));
+      if (pHead) { pHead.click(); await sleep(400); }
+      const msg = qa('.vb-palette-item').find(i => i.dataset.op === 'player.message');
+      if (!msg) { out.err = '玩家分类里没有消息积木'; return out; }
+      msg.click(); await sleep(800);
+
+      const progs = qa('.vb-program');
+      const stack = progs[progs.length - 1].querySelector('.vb-program-stack');
+      out.stack = stack ? stack.querySelectorAll(':scope > .vb').length : -1;
+      out.hasInput = !!stack?.querySelector('input.vb-input-field');
+      out.hasSelect = !!stack?.querySelector('select.vb-field-select');
+
+      // 改参数（这个改动必须在后面的预览里能看见 —— 曾经丢过）
+      const input = stack?.querySelector('input.vb-input-field');
+      if (input) {
+        input.value = '冒烟测试消息';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(300);
+      }
+
+      // 加 if，验证容器槽
+      const fHead = qa('.vb-cat-head').find(h => h.textContent.includes('流程'));
+      if (fHead) { fHead.click(); await sleep(400); }
+      const ifItem = qa('.vb-palette-item').find(i => i.dataset.op === 'flow.if');
+      if (ifItem) { ifItem.click(); await sleep(800); }
+      const stack2 = qa('.vb-program')[qa('.vb-program').length - 1].querySelector('.vb-program-stack');
+      out.bodySlot = !!stack2?.querySelector('.vb-body');
+
+      // 往容器里放一条积木（模拟拖放）
+      const body = stack2?.querySelector('.vb-body');
+      if (body) {
+        const dt = new DataTransfer();
+        dt.setData('application/x-mcstudio-block', 'player.heal');
+        body.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        body.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        await sleep(800);
+      }
+      const stack3 = qa('.vb-program')[qa('.vb-program').length - 1].querySelector('.vb-program-stack');
+      out.bodyKids = stack3?.querySelector('.vb-body')?.querySelectorAll(':scope > .vb').length || 0;
+
+      // 编译预览
+      const prev = qa('button').find(b => b.textContent.includes('编译预览'));
+      if (prev) { prev.click(); await sleep(2500); }
+      const code = q('.vb-code')?.textContent || '';
+      out.code = !!code;
+      out.hasMsg = code.includes('冒烟测试消息');
+      out.hasHeal = /player\\.heal\\(/.test(code);
+      out.hasIf = /if\\s*\\(/.test(code);
+
+      return out;
+    })()`);
+
+    if (vb.err) {
+      problems.push({ kind: '积木', text: vb.err });
+    } else {
+      const checks = [
+        ['积木面板渲染', vb.panel],
+        ['积木分类有内容', vb.cats > 0 && vb.libItems > 0],
+        ['事件帽能加出程序', vb.programs >= 1 && vb.hat],
+        ['语句积木接上了', vb.stack >= 1],
+        ['积木上有输入框和下拉', vb.hasInput && vb.hasSelect],
+        ['if 有容器槽', vb.bodySlot],
+        ['能往容器里放积木', vb.bodyKids === 1],
+        ['编译预览出代码', vb.code],
+        ['改过的参数进了代码', vb.hasMsg],
+        ['容器里的积木进了代码', vb.hasHeal],
+        ['条件结构进了代码', vb.hasIf],
+      ];
+      for (const [name, cond] of checks) {
+        if (cond) record('31-积木 ' + name, '通过');
+        else problems.push({ kind: '积木', text: name + '：没通过' });
+      }
+      await evaluate(`document.querySelector('.visual-canvas')?.scrollTo(0, 0)`);
+    }
+  }
+
+  // ---------- 积木入门向导 ----------
+  // 覆盖：打开向导 → 步进 → 「带我做」真的操作界面 → 最后一步「完成」能收掉面板
+  // 关键回归点：面板重绘必须用 setContent 而不是 fill（fill 是追加，
+  // 会叠出好几层向导，点「下一步」动的是最早那层，界面看着像没反应）。
+  {
+    const gd = await evaluate(`(async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const q = (s) => document.querySelector(s);
+      const qa = (s) => [...document.querySelectorAll(s)];
+      const out = {};
+
+      // 清空工程里存着的积木程序，让向导从干净状态开始
+      const chip = q('.proj-chip')?.textContent || '';
+      const curId = chip.trim().split(/\\s+/).pop() || '';
+      const list = await fetch('/api/projects').then(r => r.json()).catch(() => null);
+      const hit = (list?.projects || []).find(p => p.id === curId);
+      if (hit) {
+        await fetch('/api/visual/program', {
+          method: 'PUT', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ root: hit.root, programs: [] }),
+        }).catch(() => {});
+      }
+      out.curId = curId;
+
+      // 打开向导
+      const openBtn = qa('.panel-bar button').find(b => b.textContent.includes('入门'));
+      if (!openBtn) { out.err = '工具条没有「入门」按钮'; return out; }
+      openBtn.click();
+      await sleep(600);
+
+      out.shown = !!q('.vb-guide');
+      out.dots = qa('.vb-guide-dot').length;
+      out.title1 = q('.vb-guide-title')?.textContent || '';
+      out.count1 = q('.vb-guide-count')?.textContent || '';
+      out.panels = qa('.vb-guide').length;   // 必须恒为 1
+
+      // 步进：步数应该 +1，标题应该变
+      const next = qa('.vb-guide-actions button').find(b => b.textContent.includes('下一步'));
+      if (next) { next.click(); await sleep(400); }
+      out.count2 = q('.vb-guide-count')?.textContent || '';
+      out.title2 = q('.vb-guide-title')?.textContent || '';
+      out.panelsAfter = qa('.vb-guide').length;
+
+      // 「带我做」：第 2 步的动作是展开「事件」分类
+      const doBtn = q('.vb-guide-do');
+      out.doText = doBtn?.textContent || '';
+      if (doBtn) { doBtn.click(); await sleep(600); }
+      out.eventOpen = qa('.vb-palette-item').some(i => String(i.dataset.op || '').startsWith('event.'));
+
+      // 跳到最后一步，「完成」应该能点、点了面板就收掉
+      const dots = qa('.vb-guide-dot');
+      if (dots.length) { dots[dots.length - 1].click(); await sleep(350); }
+      const finish = qa('.vb-guide-actions button').find(b => b.textContent.trim() === '完成');
+      out.finishFound = !!finish;
+      out.finishDisabled = finish ? !!finish.disabled : true;
+      if (finish) { finish.click(); await sleep(400); }
+      out.closed = !q('.vb-guide');
+
+      // 收尾：把向导加的程序清掉，别给工程留垃圾
+      if (hit) {
+        await fetch('/api/visual/program', {
+          method: 'PUT', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ root: hit.root, programs: [] }),
+        }).catch(() => {});
+      }
+      return out;
+    })()`);
+
+    if (gd.err) {
+      problems.push({ kind: '向导', text: gd.err });
+    } else {
+      const checks = [
+        ['向导能打开', gd.shown],
+        ['有步骤进度点', gd.dots >= 10],
+        ['面板只有一层', gd.panels === 1 && gd.panelsAfter === 1],
+        ['下一步能步进', gd.count1 !== gd.count2 && gd.title1 !== gd.title2],
+        ['「带我做」操作了界面', gd.eventOpen],
+        ['最后一步「完成」能点', gd.finishFound && !gd.finishDisabled],
+        ['完成后向导收掉', gd.closed],
+      ];
+      for (const [name, cond] of checks) {
+        if (cond) record('32-向导 ' + name, '通过');
+        else problems.push({ kind: '向导', text: name + '：没通过' });
+      }
+    }
   }
 } finally {
   ws.close();
