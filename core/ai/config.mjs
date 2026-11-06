@@ -118,7 +118,12 @@ export function saveAiConfig(patch = {}) {
   next.knowledgeBudget = Math.min(30000, Math.max(0, Number(next.knowledgeBudget) || 0));
   next.baseUrl = String(next.baseUrl || '').replace(/\/+$/, '');
 
-  fs.mkdirSync(path.dirname(aiConfigPath()), { recursive: true });
-  fs.writeFileSync(aiConfigPath(), JSON.stringify(next, null, 2), 'utf8');
+  const cfgPath = aiConfigPath();
+  fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+  // 这里存的是 API key；类 Unix 上默认 0644 会让同机其它用户读到。
+  fs.writeFileSync(cfgPath, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
+  if (process.platform !== 'win32') {
+    try { fs.chmodSync(cfgPath, 0o600); } catch { /* 文件系统不支持权限就跳过 */ }
+  }
   return publicAiConfig();
 }

@@ -44,6 +44,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { assertRuntime, isRequireEsmError } from '../runtime.mjs';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -108,6 +109,8 @@ export function loadRules(extraDirs = []) {
       try {
         mod = require(file);
       } catch (e) {
+        // 内置规则全部是 ESM；低版本 Node 下这不是「坏插件」，而是引擎级故障。
+        if (isRequireEsmError(e)) assertRuntime();
         issues.push(`${file}：加载失败 — ${e.message}`);
         continue;
       }

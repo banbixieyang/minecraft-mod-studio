@@ -8,11 +8,13 @@
  *      且必须由调用方显式确认。
  *   3. **规则可插拔**。这里不 import 任何具体规则，全走 registry.mjs 的发现。
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { getTarget, hasTarget, listTargets } from '../target/registry.mjs';
 import { matchingRules, listRules, convertDiagnostics, registerRule, loadRules, clearRules } from './registry.mjs';
 import { collectParts, setPart, inferTargetId, featureSummary, featureFromProject } from './ir.mjs';
 import { blockConcepts, SYMBOL_TABLE, loaderMarkersIn } from './symbols.mjs';
-import { saveProject, loadProject } from '../project.mjs';
+import { saveProject, loadProject, dataPath } from '../project.mjs';
 
 export { listRules, convertDiagnostics, registerRule, loadRules, clearRules };
 
@@ -56,7 +58,7 @@ export function convert(feature, opts = {}) {
   if (errors.length) {
     return {
       ok: false, errors, warnings, from: { id: fromId }, to: { id: toId },
-      summary: emptySummary(), items: [], rules: [], notes: [], result: clone(feature), patch: null,
+      summary: emptySummary(), items: [], rules: [], notes: [], limitations: [], result: clone(feature), patch: null,
     };
   }
 
@@ -69,13 +71,26 @@ export function convert(feature, opts = {}) {
   const items = [];
   const appliedChanges = [];
   const ruleHits = [];
+  const limitations = [];
+
+  // 规则加载失败分两种：某个外部插件写坏了（隔离即可），
+  // 以及运行时根本不支持 require(esm)（全部内置规则都加载不了，属引擎级故障）。
+  const diagnostics = convertDiagnostics();
+  const fatal = diagnostics.filter((d) => /require\(\) of ES Module|ERR_REQUIRE_ESM|cycle involving require\(esm\)/i.test(d));
+  if (fatal.length) errors.push(`转换规则加载失败（运行时不兼容）：${fatal[0]}`);
+  const isolated = diagnostics.filter((d) => !fatal.includes(d));
+  if (isolated.length) limitations.push(`有 ${isolated.length} 个外部规则加载失败，已被隔离，本次没有使用它们。`);
 
   const ctx = {
     from, to, feature: clone(feature), parts: collectParts(draft),
     targets: listTargets(),
   };
   const active = opts.rules ? [...opts.rules].sort((a, b) => (b.priority || 0) - (a.priority || 0)) : matchingRules(ctx);
+  // 一条规则都没有时不能出「转换成功」：以前 Node 18/20 上规则全加载失败，
+  // convert() 仍返回 ok:true 和一个看着挺像样的 50% 自动率。
+  if (!active.length) errors.push('没有可用的转换规则（加载失败或运行时不支持 require(esm)），本次结果不能作为转换依据。');
 
+  let failedRules = 0;
   for (const r of active) {
     // 每条规则开始前刷新部件：前一条规则改过的代码，后一条要看得见。
     ctx.parts = collectParts(draft);
@@ -83,6 +98,7 @@ export function convert(feature, opts = {}) {
     try {
       out = r.convert(ctx, draft) || {};
     } catch (e) {
+      failedRules++;
       warnings.push(`规则 ${r.id} 执行失败，已跳过：${e.message}`);
       ruleHits.push({ id: r.id, label: r.label, hits: 0, failed: e.message });
       continue;
@@ -129,17 +145,32 @@ export function convert(feature, opts = {}) {
   const summary = summarize(items);
   const blocked = items.filter((i) => i.status === 'blocked');
   const manual = items.filter((i) => i.status === 'manual');
+  if (active.length && failedRules === active.length) {
+    errors.push(`${active.length} 条规则全部执行失败，本次结果不能作为转换依据。`);
+  }
+
+  // 明确写出「这次没检查什么」。以前转一个工程会给出 autoRate:100，
+  // 只是因为 IR 里根本没有资源部件 —— 没检查 ≠ 全都转好了。
+  if (feature.origin?.type === 'project' && !collectParts(draft).some((p) => p.kind === 'file')) {
+    limitations.push('来源是工程时 IR 不采集资源文件：pack.mcmeta、models/item、loot table 等资源方言本次未检查；自动率只代表已采集的部件。');
+  }
+  if (from.platform !== to.platform) {
+    limitations.push('跨加载器的事件总线、注册入口与外部 jar 依赖只给人工提示，不会自动改写。');
+  }
+  for (const l of limitations) notes.push(`[能力边界] ${l}`);
+
   return {
-    ok: true,
+    ok: errors.length === 0,
     from, to,
     sourceKind: feature.origin?.type || 'unknown',
     summary,
     items,
     rules: ruleHits,
-    diagnostics: convertDiagnostics(),
+    diagnostics,
     warnings,
     errors,
     notes,
+    limitations,
     needsReview: manual.length + blocked.length,
     result: draft,
     patch: {
@@ -203,7 +234,16 @@ export function applyConversion(root, report, opts = {}) {
   const p = loadProject(root);
   const before = p.target?.id || '';
 
-  p.target = { ...(t.defaults || {}), id: t.id };
+  // 切换目标要用新适配器的完整 defaults，但不能把用户自己加的扩展字段一起抹掉。
+  // 判定方法：既不在旧目标 defaults、也不在新目标 defaults 里的键，才算自定义。
+  let oldDefaults = {};
+  try { oldDefaults = (before ? getTarget(before)?.defaults : {}) || {}; } catch { /* 旧目标已卸载 */ }
+  const extras = {};
+  for (const [k, v] of Object.entries(p.target || {})) {
+    if (k === 'id' || k in oldDefaults || k in (t.defaults || {})) continue;
+    extras[k] = v;
+  }
+  p.target = { ...(t.defaults || {}), ...extras, id: t.id };
   const fromProject = report.sourceKind === 'project';
   if (Array.isArray(report.patch.java)) {
     p.hooks = p.hooks || { java: [], js: [] };
@@ -226,6 +266,12 @@ export function applyConversion(root, report, opts = {}) {
     from: report.from.id, to: t.id, at: new Date().toISOString(),
     autoRate: report.summary.autoRate, needsReview: report.needsReview,
   };
+  // 写之前留一份原样快照。转换是不可撤销的整体替换，出问题时至少能一键拷回去。
+  const dataFile = dataPath(root);
+  const backupDir = path.join(path.dirname(dataFile), 'backups');
+  fs.mkdirSync(backupDir, { recursive: true });
+  const backup = path.join(backupDir, `project-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  fs.copyFileSync(dataFile, backup);
   saveProject(root, p);
 
   // 资源不在这里写：应用完由调用方跑 generate(root)，让目标适配器整套重出。
@@ -236,6 +282,8 @@ export function applyConversion(root, report, opts = {}) {
     hooks: p.hooks.java.length,
     programs: p.visual.programs.length,
     needsReview: report.needsReview,
+    backup,
+    limitations: report.limitations || [],
     next: '跑一次「生成」，让目标适配器按新目标重出 Java 与资源；再构建验证。',
   };
 }

@@ -139,20 +139,31 @@ export function writeBbmodel(root, type, id, texturePathOverride) {
   return { file, texture: abs, textureRel: rel, size: `${img.width}x${img.height}` };
 }
 
-/** 常见的 Blockbench 安装位置（Windows） */
+/** 常见的 Blockbench 安装位置，按平台分开 —— Windows 路径在 POSIX 上只会变成无意义的相对路径。 */
 function blockbenchCandidates() {
   const home = process.env.USERPROFILE || process.env.HOME || '';
-  const local = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-  const roaming = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-  const list = [
-    path.join(local, 'Programs', 'Blockbench', 'Blockbench.exe'),
-    path.join(local, 'Blockbench', 'Blockbench.exe'),
-    path.join(roaming, 'Blockbench', 'Blockbench.exe'),
-    path.join('C:', 'Program Files', 'Blockbench', 'Blockbench.exe'),
-    path.join('C:', 'Program Files (x86)', 'Blockbench', 'Blockbench.exe'),
-  ];
-  if (process.platform === 'darwin') {
-    list.unshift('/Applications/Blockbench.app/Contents/MacOS/Blockbench');
+  const list = [];
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    const roaming = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+    list.push(
+      path.join(local, 'Programs', 'Blockbench', 'Blockbench.exe'),
+      path.join(local, 'Blockbench', 'Blockbench.exe'),
+      path.join(roaming, 'Blockbench', 'Blockbench.exe'),
+      path.join('C:', 'Program Files', 'Blockbench', 'Blockbench.exe'),
+      path.join('C:', 'Program Files (x86)', 'Blockbench', 'Blockbench.exe'),
+    );
+  } else if (process.platform === 'darwin') {
+    list.push('/Applications/Blockbench.app/Contents/MacOS/Blockbench');
+    list.push(path.join(home, 'Applications', 'Blockbench.app', 'Contents', 'MacOS', 'Blockbench'));
+  } else {
+    list.push(
+      '/usr/bin/blockbench',
+      '/usr/local/bin/blockbench',
+      '/opt/Blockbench/blockbench',
+      path.join(home, '.local', 'bin', 'blockbench'),
+      path.join(home, 'Applications', 'Blockbench.AppImage'),
+    );
   }
   return list.filter((f) => {
     try {

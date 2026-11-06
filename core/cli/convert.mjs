@@ -62,6 +62,10 @@ function reportLines(r) {
     if (i.suggestion) lines.push(`      → ${i.suggestion}`);
   }
   if (r.warnings.length) { lines.push('', '  警告：'); for (const w of r.warnings) lines.push(`    ! ${w}`); }
+  if (r.limitations?.length) {
+    lines.push('', '  本次能力边界（自动率只代表已采集的部件）：');
+    for (const l of r.limitations) lines.push(`    · ${l}`);
+  }
   if (r.needsReview) lines.push('', '  ⚠ 有需人工的项目：转换结果里已写 // TODO(转换)，编译前请按提示改完。');
   lines.push('', '  下一步：生成一次并构建，让目标适配器重出资源并验证 Java。');
   return lines;
@@ -159,6 +163,7 @@ export async function convertCommand(sub, argv = []) {
         `  ✓ 已把 ${applied.from || '(未标注)'} 的工程切到 ${applied.to}`,
         `  ${applied.hooks} 段 Java / ${applied.programs} 段积木程序 / ${applied.changedParts.length} 个部件被改写`,
         `  需人工复核 ${r.needsReview} 项（代码里已标 // TODO(转换)）`,
+        `  已备份原工程数据：${applied.backup}`,
         `  ${applied.next}`,
       ];
       if (applied.generate) lines.push(`  已重新生成：写入 ${applied.generate.written.length} / 冲突 ${applied.generate.conflicts.length}`);

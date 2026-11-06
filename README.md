@@ -10,11 +10,14 @@ Minecraft 模组可视化编辑器。**表单填内容 → 一键出 jar。**
 
 ## 快速开始
 
+**需要 Node.js 22.12+**（或 20.19+ 且开启了 `require(esm)`）。引擎用 `require(esm)` 同步加载目标适配器、转换规则与 mod 积木包插件；更低版本会在启动时明确报错，不会静默生成错工程。
+
 ```bash
 node studio.mjs start
 ```
 
 浏览器打开 `http://127.0.0.1:4173` 即可。**不需要 npm install**（本项目零依赖）。
+Windows 上想双击启动，可以自己做一个 `.bat` 调 `node studio.mjs start --port 4173`。
 
 首次进入点首页上手卡之一，跟着走就行：
 
@@ -89,13 +92,18 @@ node studio.mjs start
 工程把选中的目标完整写进 `.studio/project.json` 的 `target`（含 `id` 与适配器专属字段）。
 老工程只有 `platform + mcVersion`，加载时会自动补 `id`。
 
-**加一个目标**只需写 `core/target/<id>/adapter.mjs` 并在 `core/target/registry.mjs` 登记一行。
+**加一个目标**：写 `core/target/<id>/adapter.mjs` 并在 `core/target/registry.mjs` 登记一行，
+目标就会出现在清单里（也可以丢进 `~/.mcstudio/targets/` 自动发现）。但要让新目标**真正可用**，
+还得补三样：积木库的 Java 模板（内置积木目前只写了这两个目标）、资源方言分支
+（`features.resourceFormat` 目前是「1.20.1 / 其它」二值）、以及转换规则的符号映射。
+目前内置的完整支持只有 `fabric-26.3` 与 `forge-1.20.1` 两个目标。
 版本方言（`models/item` vs `items`、`recipes` vs `recipe`、`loot_tables` vs `loot_table`、
 盔甲贴图路径、配方 `result` 形状……）由生成器按适配器的 `features.resourceFormat` 分派，
 内容模块不需要判断版本号。细节见 [`docs/module-guide.md`](docs/module-guide.md)。
 
-**已有工程想换目标**：用顶栏「转换」做一次预览再应用，它会把 `target` 整体换成新目标的默认值、
-改写代码钩子里的平台差异写法，并把不敢自动改的地方列成「需人工」清单；
+**已有工程想换目标**：用顶栏「转换」做一次预览再应用，它会把 `target` 换成新目标的默认值
+（保留你自定义的扩展字段）、改写代码钩子里的平台差异写法，并把不敢自动改的地方列成
+「需人工」清单；报告会明确写出「这次没检查什么」，应用前自动备份 `.studio/project.json`。
 应用后再生成 + 构建。详见[《10 · 功能转换器》](docs/guides/10-转换器插件.md)。
 
 ## 文档
@@ -236,7 +244,9 @@ node tests/cookbook.mjs --build           # Fabric 任务卡代码真编译 + �
 node tests/forge.mjs --build              # Forge 1.20.1 骨架 + 2 张 Forge 任务卡真编译
 node tests/generality.mjs                 # 分析器通用性：换任何 mod 都不大面积踩坑
 node tests/extensible.mjs                 # 目标 / modpack / 自定义积木 / lint / CLI / 工具索引
-node tests/convert.mjs                    # 转换器：IR / 规则 / 双向转换 / CLI / HTTP / 应用 / 生成
+node tests/runtime.mjs                    # 运行时契约：低版本 Node 必须显式报错，不静默降级
+node tests/security.mjs                   # 服务边界：跨站 Origin / 任意 Gradle 任务 / 越界写
+node tests/convert.mjs                    # 转换器：IR / 规则 / 双向转换 / CLI / HTTP / 应用 / 备份 / 生成
 node tests/convert.mjs --build            # 额外对转换后的 Forge 工程真跑 Gradle
 node tests/docs.mjs                       # 文档一致性：与知识库同源 + 链接全有效
 node tests/tutorial.mjs                   # 上手入口：首页三卡 → 知识库 → 打开对应文档

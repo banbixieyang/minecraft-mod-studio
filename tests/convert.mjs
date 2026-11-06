@@ -331,7 +331,36 @@ console.log('\n[8] 应用后能按新目标重出资源');
   }
 }
 
-console.log('\n[9] 收尾');
+console.log('\n[9] 备份 / 目标字段保留 / 报告可信度');
+{
+  const dir = makeProject('hardening', 'fabric-26.3');
+  const p = P.loadProject(dir);
+  p.target.myCustomFlag = 'keep-me';
+  P.saveProject(dir, p);
+  const before = fs.readFileSync(P.dataPath(dir), 'utf8');
+
+  const report = ENG.convert(IR.featureFromProject(dir), { toTargetId: 'forge-1.20.1' });
+  ok(report.ok, '正常转换仍然成功');
+  ok(report.limitations.some((l) => l.includes('资源文件')), '报告写明资源方言未检查，自动率不是全量结论');
+  ok(report.limitations.some((l) => l.includes('事件总线')), '报告写明跨加载器的人工边界');
+  ok(report.notes.some((n) => n.includes('[能力边界]')), '能力边界也进了 notes');
+
+  const applied = ENG.applyConversion(dir, report, { confirmed: true });
+  ok(!!applied.backup && fs.existsSync(applied.backup), '应用前留下备份文件');
+  ok(fs.readFileSync(applied.backup, 'utf8') === before, '备份内容就是转换前的原样数据');
+  const after = P.loadProject(dir);
+  ok(after.target.id === 'forge-1.20.1' && after.target.platform === 'forge', '目标已切到 Forge');
+  ok(after.target.myCustomFlag === 'keep-me', '用户自定义的 target 字段没有丢');
+  ok(!('apiVersion' in after.target), '旧目标专属字段不会带到新目标');
+  ok(applied.limitations.length === report.limitations.length, '应用结果也带回能力边界');
+
+  const noRules = ENG.convert(IR.featureFromProject(dir), { toTargetId: 'fabric-26.3', rules: [] });
+  ok(noRules.ok === false && noRules.errors.length > 0, '一条规则都没有时不再报成功');
+  const badTarget = ENG.convert(IR.featureFromProject(dir), { toTargetId: 'not-a-target' });
+  ok(badTarget.ok === false && Array.isArray(badTarget.limitations), '早退路径也带 limitations 字段');
+}
+
+console.log('\n[10] 收尾');
 {
   ok(REG.convertDiagnostics().filter((d) => !d.includes('broken.mjs')).length === 0, '除故意的坏规则外无其它加载问题');
   fs.rmSync(tmp, { recursive: true, force: true });

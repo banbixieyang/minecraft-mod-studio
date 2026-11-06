@@ -94,13 +94,13 @@ async function doApply() {
   const ok = await confirmBox(
     `会把当前工程切到 ${C.report.to.label}，并写入转换后的 ${C.report.patch.changedParts.length} 个部件。\n` +
     `另有 ${s.manual + s.blocked} 项需要人工复核（代码里已写 TODO）。\n` +
-    `原有工程数据会被改动，建议先备份。`,
+    `原有工程数据会自动备份到 .studio/backups/，需要时可拷回。`,
     { title: '应用转换结果', danger: true },
   );
   if (!ok) return;
   try {
     const r = await api.convertApply({ root: C.ctx.root, source: sourcePayload(), to: C.to, from: C.from });
-    toast(`已切到 ${r.applied.to}，${r.applied.hooks} 段 Java。接着点「生成」。`, 'ok');
+    toast(`已切到 ${r.applied.to}，${r.applied.hooks} 段 Java；原数据已自动备份到 .studio/backups/。接着点「生成」。`, 'ok');
     C.ctx.onChanged?.();
   } catch (err) {
     toast(`应用失败：${err.message}`, 'error');
@@ -138,6 +138,7 @@ function summaryCard() {
     el('div.convert-bar', {}, el('div.convert-bar-fill', { style: { width: `${s.autoRate}%` } })),
     el('div.muted.small', { text: `自动率 ${s.autoRate}% · 综合覆盖 ${s.coverage}% · 需复核 ${r.needsReview} 项` }),
     ...(r.needsReview ? [el('div.warn-line', { text: `有 ${r.needsReview} 项没敢自动改，代码里已标 // TODO(转换)，编译前请按提示处理。` })] : []),
+    ...(r.limitations || []).map((l) => el('div.field-hint', { text: `范围说明：${l}` })),
     el('div.row-actions', {},
       el('button.btn.small.primary', { onclick: doApply, disabled: !C.ctx?.root }, '应用到当前工程'),
       el('button.btn.small.ghost', {

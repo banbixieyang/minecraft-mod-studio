@@ -18,6 +18,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertRuntime } from './core/runtime.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -53,6 +54,8 @@ MC Studio —— Minecraft 模组可视化编辑器
 }
 
 async function main() {
+  // 启动就钉死运行时契约，别等插件静默加载失败才发现版本不对。
+  assertRuntime();
   switch (cmd) {
     case 'start': {
       const { start } = await import('./core/serve/server.mjs');

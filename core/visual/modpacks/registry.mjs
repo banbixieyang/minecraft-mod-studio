@@ -38,6 +38,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { assertRuntime, isRequireEsmError } from '../../runtime.mjs';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -106,6 +107,7 @@ export function loadPacks(extraDirs = []) {
       try {
         mod = require(file);
       } catch (e) {
+        if (isRequireEsmError(e)) assertRuntime();
         issues.push(`${file}：加载失败 — ${e.message}`);
         continue;
       }

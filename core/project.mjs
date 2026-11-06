@@ -11,6 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { isValidId, validateId, uniqueId } from './ids.mjs';
+import { assertRuntime, isRequireEsmError } from './runtime.mjs';
 
 export const STUDIO_DIR = '.studio';
 export const DATA_FILE = 'project.json';
@@ -39,7 +40,10 @@ function targetDefaults(targetId) {
     const { getTarget } = req('./target/registry.mjs');
     const t = getTarget(targetId);
     return t ? { ...t.defaults, id: t.id } : null;
-  } catch {
+  } catch (e) {
+    // 以前这里一律吞掉：Node 18/20 上 require(esm) 失败会静默回落成 fabric
+    // 默认值，请求 forge 却写出 platform:fabric 的自相矛盾工程。现在必须炸出来。
+    if (isRequireEsmError(e)) assertRuntime();
     return null;
   }
 }

@@ -52,6 +52,8 @@ const SUITES = [
   { file: 'knowledge.mjs' },
   { file: 'modlib.mjs' },
   { file: 'pack.mjs' },
+  { file: 'runtime.mjs' },
+  { file: 'security.mjs' },
   { file: 'tutorial.mjs' },
   { file: 'visual.mjs' },
   { file: 'visual-routes.mjs' },

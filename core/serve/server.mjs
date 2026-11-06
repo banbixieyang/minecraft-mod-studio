@@ -26,6 +26,7 @@ import { handleKnowledge } from './routes_kb.mjs';
 import { handleHooks } from './routes_hooks.mjs';
 import { handleVisual } from './routes_visual.mjs';
 import { handleConvert } from './routes_convert.mjs';
+import { assertRuntime } from '../runtime.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIR = path.resolve(HERE, '../../ui');
@@ -115,7 +116,65 @@ function serveStatic(res, urlPath) {
 // 路由
 // ============================================================
 
+/** 允许的 Gradle 任务：build 接口以前把 task 名整个交给客户端，等于开放任意脚本执行。 */
+const ALLOWED_TASKS = new Set(['build', 'compileJava', 'compileTestJava', 'test', 'clean', 'jar', 'check', 'tasks']);
+
+/** 是不是一个真正的工程目录（有 .studio/project.json）。 */
+function requireProject(root, label = '目录') {
+  const dir = path.resolve(String(root || ''));
+  if (!P.isProject(dir)) {
+    const e = new Error(`${label}不是 MC Studio 工程目录：${dir}`);
+    e.status = 400;
+    throw e;
+  }
+  return dir;
+}
+
+function httpError(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+
+/**
+ * 写请求统一守卫。
+ *
+ * 服务只监听 127.0.0.1，但「只本机可达」不等于安全：浏览器里的任意网页都能
+ * 向 127.0.0.1 发简单 POST。两道闸：
+ *   · 带 Origin 的请求必须与本机同源（跨站 POST 一定带 Origin）
+ *   · 带正文的写请求必须是 application/json —— 跨站想发这个类型就得先过
+ *     CORS 预检，而本服务不返回任何 CORS 头，预检直接失败。
+ * 没有 Origin 的命令行 / curl 请求仍可用，但必须显式声明 JSON 类型。
+ * jar 上传是二进制流，走自己的大小 / ZIP 头 / 文件名校验，这里只放行 Origin。
+ */
+function guardWrite(req, route) {
+  const method = String(req.method || '').toUpperCase();
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
+
+  const origin = String(req.headers.origin || '');
+  if (origin) {
+    const host = String(req.headers.host || '');
+    const port = req.socket?.localPort;
+    const allowed = new Set([`http://${host}`, `https://${host}`]);
+    if (port) {
+      allowed.add(`http://localhost:${port}`);
+      allowed.add(`http://127.0.0.1:${port}`);
+      allowed.add(`http://[::1]:${port}`);
+    }
+    if (!allowed.has(origin)) throw httpError(403, `跨站请求被拒绝（Origin: ${origin}）`);
+  }
+
+  const hasBody = Number(req.headers['content-length'] || 0) > 0 || !!req.headers['transfer-encoding'];
+  if (!hasBody) return;
+  const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  if (route === 'analyze/upload') return; // 二进制上传由 routes_extras 自己校验
+  if (ct !== 'application/json') {
+    throw httpError(403, '写接口只接受 application/json；拒绝跨站简单请求');
+  }
+}
+
 export function createServer() {
+  assertRuntime();
   return http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const p = url.pathname;
@@ -123,12 +182,14 @@ export function createServer() {
 
     try {
       if (p.startsWith('/api/')) {
-        await handleApi(req, res, p.slice(5), q, url);
+        const route = p.slice(5);
+        guardWrite(req, route);
+        await handleApi(req, res, route, q, url);
         return;
       }
       serveStatic(res, p);
     } catch (e) {
-      fail(res, 400, e.message);
+      fail(res, e.status || 400, e.message);
     }
   });
 }
@@ -286,8 +347,12 @@ async function handleApi(req, res, route, q, url) {
 
   if (route === 'project/delete' && method === 'POST') {
     const body = await readBody(req);
-    const dir = path.resolve(body.root);
-    if (!dir.startsWith(PROJECTS_DIR)) throw new Error('只能删除 projects 目录下的工程');
+    const dir = path.resolve(String(body.root || ''));
+    // 字符串前缀判断会被 <projects>-evil 这类同级目录绕过；用真实路径关系。
+    const rel = path.relative(PROJECTS_DIR, dir);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || rel.split(path.sep).length !== 1) {
+      throw new Error('只能删除 projects 目录下的一级工程');
+    }
     fs.rmSync(dir, { recursive: true, force: true });
     return ok(res);
   }
@@ -382,7 +447,8 @@ async function handleApi(req, res, route, q, url) {
 
   if (route === 'file' && method === 'PUT') {
     const body = await readBody(req);
-    const abs = safeJoin(body.root, body.path);
+    const root = requireProject(body.root, '写入目标');
+    const abs = safeJoin(root, body.path);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, body.content ?? '', 'utf8');
     // 手改生成文件后，指纹会不一致，下次生成会提示冲突 —— 这是预期行为
@@ -456,7 +522,10 @@ async function handleApi(req, res, route, q, url) {
   // ---------- 构建 ----------
   if (route === 'build' && method === 'POST') {
     const body = await readBody(req);
-    const job = runGradle(body.root, body.task || 'build');
+    const task = String(body.task || 'build');
+    if (!ALLOWED_TASKS.has(task)) throw new Error(`不允许的 Gradle 任务：${task}`);
+    const root = requireProject(body.root, '构建目标');
+    const job = runGradle(root, task);
     return ok(res, { job: { id: job.id, task: job.task } });
   }
 

@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { assertRuntime, isRequireEsmError } from '../runtime.mjs';
 import { fileURLToPath } from 'node:url';
 import fabric263 from './fabric-26.3/adapter.mjs';
 import forge1201 from './forge-1.20.1/adapter.mjs';
@@ -98,6 +99,9 @@ export function loadExternalTargets(extraDirs = []) {
       try {
         mod = require(file);
       } catch (e) {
+        // 运行时不支持 require(esm) 不是「某个插件坏了」，不能隔离后继续跑：
+        // 那会让所有外部目标静默消失，getTarget() 悄悄回落。
+        if (isRequireEsmError(e)) assertRuntime();
         loadIssues.push(`${file}：加载失败 — ${e.message}`);
         continue;
       }

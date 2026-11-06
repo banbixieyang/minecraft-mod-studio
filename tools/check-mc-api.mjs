@@ -143,3 +143,6 @@ console.log('解析出的类名（可直接抄进积木模板）：');
 for (const [k, v] of Object.entries(resolved)) {
   console.log(`  ${k} = ${v}`);
 }
+
+// 以前这里只打印 problems，接进 CI 时「对不上」也会以 0 退出，等于没检查。
+process.exit(problems ? 1 : 0);
