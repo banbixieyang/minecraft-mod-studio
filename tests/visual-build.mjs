@@ -189,6 +189,11 @@ function makeProject() {
         id: 'ruby', nameZh: '红宝石', nameEn: 'Ruby',
         kind: 'material', maxStack: 64, texture: 'ruby',
         description: '测试物品',
+        // per-entry 积木：只有拿着「红宝石」用物品时才会触发（验证条目级绑定 + owner 过滤）
+        visualPrograms: [{
+          op: 'event.item_use',
+          next: block('player.message', { inputs: { text: value('text', '来自红宝石的专属效果') } }),
+        }],
       }],
     },
     hooks: { java: [], js: [] },
@@ -298,6 +303,11 @@ if (fs.existsSync(logicPath)) {
   ok(code.includes('on_attack'), '含攻击事件方法');
   ok(code.includes('on_item_use'), '含使用物品事件方法');
   ok(code.includes('on_server_tick'), '含服务器 tick 事件方法');
+  // per-entry：红宝石物品自带 item_use 程序，方法名带 owner 作用域，且接线只在该物品使用时触发
+  ok(code.includes('on_item_use_item_ruby'), '含 per-entry（红宝石）方法');
+  ok(code.includes('ModItems.RUBY'), 'per-entry 接线按物品过滤（引用 ModItems.RUBY）');
+  ok(code.includes('== ModItems.RUBY'), 'per-entry 接线带 owner 等值判断');
+  ok(code.includes('import com.example.visualbuild.registry.ModItems;'), 'per-entry 接线导入了 ModItems');
   ok(code.includes('on_mod_give'), '含 mod 型「给物品」方法');
   ok(code.includes('on_mod_block'), '含 mod 型「设方块」方法');
   ok(code.includes('on_mod_effect'), '含 mod 型「加效果」方法');

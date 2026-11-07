@@ -82,6 +82,39 @@ export const METHOD_PREFIX = {
   'event.item_use': 'on_item_use',
 };
 
+/**
+ * 条目类型 → 该条目能「拥有」的事件帽形。
+ *
+ * 这是 per-entry 积木绑定的核心守卫：一个武器/方块不该能挂 server_tick 这种
+ * 与自身无关的事件，挂了也永远触发不到它身上。
+ *   · item 可以拥有：使用物品、右键（拿在手上右键）、攻击（拿在手上攻击）
+ *   · block 可以拥有：被右键、被破坏
+ * 不在白名单里的组合在编译期直接报错，绝不生成一段永远用不上的方法。
+ */
+export const OWNER_EVENT_RULES = {
+  item: ['event.item_use', 'event.player_rightclick_block', 'event.entity_attack'],
+  block: ['event.player_rightclick_block', 'event.block_break'],
+};
+
+/** 把任意条目 id 变成合法的 Java 标识符片段（用作方法名后缀） */
+export function sanitizeOwnerId(id) {
+  const s = String(id || '').replace(/[^A-Za-z0-9_]/g, '_');
+  return s || 'x';
+}
+
+/**
+ * 判断「条目类型 + 事件 op」能不能配对。返回 null 表示允许，否则返回中文原因。
+ */
+export function checkOwnerEvent(ownerType, op) {
+  const allowed = OWNER_EVENT_RULES[ownerType];
+  if (!allowed) return `不支持的条目类型「${ownerType}」（可绑定的有：item、block）`;
+  if (!allowed.includes(op)) {
+    const label = { item: '物品', block: '方块' }[ownerType] || ownerType;
+    return `${label}不能拥有事件「${op}」（它只支持：${allowed.join('、')}）`;
+  }
+  return null;
+}
+
 /** Java 字符串字面量转义 */
 export function javaStr(s) {
   return `"${String(s ?? '')
@@ -398,6 +431,7 @@ export function compileProgram(program, opts = {}) {
 
   const methodName = opts.methodName || `${METHOD_PREFIX[program.op] || 'program'}`;
   const sigText = pickSignature(sig, ctx.targetId);
+  ctx.owner = opts.owner || null;
   const body = bodyLines.length ? indent(bodyLines.join('\n'), 1) : '        // （空程序）';
 
   const method = sig.body
@@ -433,7 +467,7 @@ export function compileProgram(program, opts = {}) {
     code,
     // 方法片段（不含外层类），供工程级编译拼装用
     methodCode: method,
-    methods: [{ name: methodName, event: program.op, signature: sigText }],
+    methods: [{ name: methodName, event: program.op, signature: sigText, owner: opts.owner || null }],
     warnings: ctx.warnings,
     errors: ctx.errors,
   };
@@ -480,9 +514,25 @@ function collectImports(ctx) {
  * @returns {{ok:boolean, files:object[], warnings:string[], errors:string[]}}
  */
 export function compileProject(project, opts = {}) {
-  const programs = project?.visual?.programs || [];
   const targetId = opts.targetId || project?.target?.id || 'fabric-26.3';
   const pkg = opts.pkg || project?.meta?.pkg || 'com.example.mymod';
+
+  // 收集所有要编译的程序：全局程序 + 各条目自带的程序（per-entry 绑定）。
+  // per-entry 程序挂在 entry.visualPrograms 上，编译时带上 owner，
+  // 用于方法名作用域与事件接线过滤。
+  const tasks = [];
+  for (const g of project?.visual?.programs || []) {
+    if (g && g.op) tasks.push({ prog: g, owner: null });
+  }
+  for (const type of ['item', 'block']) {
+    for (const e of project?.entries?.[type] || []) {
+      const list = e?.visualPrograms || [];
+      if (!Array.isArray(list)) continue;
+      for (const prog of list) {
+        if (prog && prog.op) tasks.push({ prog, owner: { type, id: e.id } });
+      }
+    }
+  }
 
   const methods = [];
   const warnings = [];
@@ -491,8 +541,23 @@ export function compileProject(project, opts = {}) {
   // （Java 不允许同名方法，编译会失败）。
   const usedNames = new Set();
 
-  programs.forEach((prog) => {
-    const baseName = prog.methodName || METHOD_PREFIX[prog.op] || 'program';
+  tasks.forEach(({ prog, owner }) => {
+    // 守卫：条目类型 + 事件 op 必须配对，否则这段程序永远触发不到。
+    if (owner) {
+      const why = checkOwnerEvent(owner.type, prog.op);
+      if (why) {
+        errors.push(`${owner.type}/${owner.id}：${why}`);
+        return;
+      }
+    }
+
+    // 方法名基底：per-entry 程序强制带上 owner 后缀，保证不同条目互不撞车。
+    let baseName;
+    if (owner) {
+      baseName = `${METHOD_PREFIX[prog.op] || 'program'}_${owner.type}_${sanitizeOwnerId(owner.id)}`;
+    } else {
+      baseName = prog.methodName || METHOD_PREFIX[prog.op] || 'program';
+    }
     let name = baseName;
     if (usedNames.has(name)) {
       let k = 2;
@@ -506,6 +571,7 @@ export function compileProject(project, opts = {}) {
       pkg,
       methodName: name,
       className: 'ModLogic',
+      owner,
     });
     warnings.push(...r.warnings);
     errors.push(...r.errors);
@@ -556,6 +622,7 @@ export function compileProject(project, opts = {}) {
     compiled: methods.map((m) => ({
       op: m.program.op,
       methodName: m.method.name,
+      owner: m.method.owner || null,
       program: m.program,
     })),
     warnings,

@@ -106,7 +106,7 @@ ${hasVisual ? '        ModLogic.init();\n' : ''}        CustomContent.init(bus);
     }
 
     public static ResourceLocation id(String path) {
-        return new ResourceLocation(MOD_ID, path);
+        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
     }
 }
 `;
@@ -142,11 +142,11 @@ import net.minecraft.world.level.block.Block;
 public final class ModTags {
 ${lines.length ? lines.join('\n') + '\n' : ''}
     private static TagKey<Item> item(String path) {
-        return TagKey.create(Registries.ITEM, new ResourceLocation(${cls}.MOD_ID, path));
+        return TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath(${cls}.MOD_ID, path));
     }
 
     private static TagKey<Block> block(String path) {
-        return TagKey.create(Registries.BLOCK, new ResourceLocation(${cls}.MOD_ID, path));
+        return TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath(${cls}.MOD_ID, path));
     }
 
     private ModTags() {

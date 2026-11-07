@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { toPascal } from '../../ids.mjs';
+import { toPascal, toConstant } from '../../ids.mjs';
 import * as java from './java.mjs';
 import * as visual from './visual.mjs';
 
@@ -240,5 +240,14 @@ ${opts.clientModsDir ? `\nclient_mods_dir=${opts.clientModsDir}\n` : ''}`,
   /** 可视化积木的事件接线 */
   visualWiring(p, info) {
     return visual.visualWiring(p, info);
+  },
+
+  /**
+   * 条目 → 注册表引用（per-entry 积木接线用来过滤「只有这个物品/方块才触发」）。
+   * 物品是 ModItems.<CONST>（Item 实例），方块是 ModBlocks.<CONST>（Block 实例）。
+   */
+  refs: {
+    item(id) { return `ModItems.${toConstant(id)}`; },
+    block(id) { return `ModBlocks.${toConstant(id)}`; },
   },
 };

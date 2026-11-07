@@ -17,6 +17,69 @@
  * 所以这里先 cast 成 ServerPlayer 再调我们的方法 —— 顺带过滤掉客户端。
  */
 
+import { toConstant } from '../../ids.mjs';
+
+/** 条目 → 注册表引用 + 需要的 import（per-entry 接线用它来过滤「只有这个条目才触发」） */
+function ownerRef(owner, pkg) {
+  // 注意：这里只返回类的全限定名，import 前缀由 genVisual 统一加，
+  // 否则会出现「import import ...」这种重复。
+  if (owner.type === 'block') {
+    return { expr: `ModBlocks.${toConstant(owner.id)}`, imp: `${pkg}.registry.ModBlocks` };
+  }
+  return { expr: `ModItems.${toConstant(owner.id)}`, imp: `${pkg}.registry.ModItems` };
+}
+
+/**
+ * per-entry 接线：条目类型 + 事件 op → 带 owner 过滤的注册代码。
+ * 全局程序（owner 为空）走下面的 WIRING，行为不变。
+ */
+const OWNED = {
+  'event.item_use|item': (m, ref) => ({
+    imports: ['net.fabricmc.fabric.api.event.player.UseItemCallback', 'net.minecraft.world.InteractionResult', ref.imp],
+    code: `        UseItemCallback.EVENT.register((player, level, hand) -> {
+            if (player instanceof net.minecraft.server.level.ServerPlayer sp && sp.getItemInHand(hand).getItem() == ${ref.expr}) {
+                ${m}(sp, level, hand);
+            }
+            return InteractionResult.PASS;
+        });`,
+  }),
+  'event.player_rightclick_block|item': (m, ref) => ({
+    imports: ['net.fabricmc.fabric.api.event.player.UseBlockCallback', 'net.minecraft.world.InteractionResult', ref.imp],
+    code: `        UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
+            if (player instanceof net.minecraft.server.level.ServerPlayer sp && sp.getItemInHand(hand).getItem() == ${ref.expr}) {
+                ${m}(sp, level, hand, hit);
+            }
+            return InteractionResult.PASS;
+        });`,
+  }),
+  'event.player_rightclick_block|block': (m, ref) => ({
+    imports: ['net.fabricmc.fabric.api.event.player.UseBlockCallback', 'net.minecraft.world.InteractionResult', ref.imp],
+    code: `        UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
+            if (player instanceof net.minecraft.server.level.ServerPlayer sp && hit.getBlockState().getBlock() == ${ref.expr}) {
+                ${m}(sp, level, hand, hit);
+            }
+            return InteractionResult.PASS;
+        });`,
+  }),
+  'event.block_break|block': (m, ref) => ({
+    imports: ['net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents', ref.imp],
+    code: `        PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, entity) -> {
+            if (player instanceof net.minecraft.server.level.ServerPlayer sp && state.getBlock() == ${ref.expr}) {
+                ${m}(sp, world, pos, state);
+            }
+        });`,
+  }),
+  'event.entity_attack|item': (m, ref) => ({
+    imports: ['net.fabricmc.fabric.api.event.player.AttackEntityCallback', 'net.minecraft.world.InteractionResult', ref.imp],
+    code: `        AttackEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
+            if (player instanceof net.minecraft.server.level.ServerPlayer sp && sp.getItemInHand(hand).getItem() == ${ref.expr}) {
+                ${m}(sp, level, entity);
+            }
+            return InteractionResult.PASS;
+        });`,
+  }),
+};
+
 /** 事件接线：帽形 op → { 方法名, import, 注册代码模板 } */
 const WIRING = {
   'event.player_rightclick_block': {
@@ -88,16 +151,28 @@ const WIRING = {
 /**
  * 生成接线代码。
  * @param {object} p 工程数据
- * @param {object} info { compiled: [{ op, methodName }] }
+ * @param {object} info { compiled: [{ op, methodName, owner }] }
  * @returns {string} Java 代码（可为空）
  */
 export function visualWiring(p, info) {
   const compiled = info?.compiled || [];
   if (!compiled.length) return '';
 
+  const pkg = p?.meta?.pkg || 'com.example.mymod';
   const imports = new Set();
   const bodies = [];
   for (const item of compiled) {
+    // per-entry 程序：带 owner 过滤，只有对应的物品/方块才触发
+    if (item.owner) {
+      const gen = OWNED[`${item.op}|${item.owner.type}`];
+      if (!gen) continue; // 非法组合已被编译器守卫拦下，这里兜底跳过
+      const ref = ownerRef(item.owner, pkg);
+      const built = gen(item.methodName, ref);
+      for (const i of built.imports) if (i) imports.add(i);
+      bodies.push(built.code);
+      continue;
+    }
+    // 全局程序：不加过滤，事件一律触发（保持原行为）
     const w = WIRING[item.op];
     if (!w) continue;
     for (const i of w.imports) imports.add(i);

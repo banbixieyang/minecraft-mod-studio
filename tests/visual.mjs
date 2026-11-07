@@ -5,10 +5,12 @@
  */
 import { block, value, validate, countBlocks, cloneBlocks } from '../core/visual/model.mjs';
 import { registerBlocks, clearBlocks, getBlock, allBlocks, templateFor } from '../core/visual/blocks.mjs';
-import { compileProgram, compileProject, compileValue, javaStr } from '../core/visual/compile.mjs';
+import { compileProgram, compileProject, compileValue, javaStr, checkOwnerEvent, OWNER_EVENT_RULES } from '../core/visual/compile.mjs';
 import { ensureBuiltin, createUserBlock, blockCatalog, exportUserBlocks } from '../core/visual/registry.mjs';
 import { decompile, RAW_JAVA_BLOCK } from '../core/visual/decompile.mjs';
 import { validateLibrary, installLibrary, exportLibrary, LIB_FORMAT } from '../core/visual/library.mjs';
+import * as fabricVisual from '../core/target/fabric-26.3/visual.mjs';
+import * as forgeVisual from '../core/target/forge-1.20.1/visual.mjs';
 
 let failed = 0;
 const ok = (cond, msg, extra) => {
@@ -347,6 +349,105 @@ console.log('\n[21] 编译：条件无限嵌套 + 逻辑组合');
   ok(!bad && bal === 0, '花括号平衡（含嵌套）', `bal=${bal}`);
   ok((code.match(/if\s*\(/g) || []).length >= 3, '至少有 3 层 if', `${code.match(/if\s*\(/g)?.length} 层`);
   ok(code.includes('heal') && code.includes('嵌套成功'), '嵌套内层逻辑已编译');
+}
+
+console.log('\n[22] 编译器：per-entry 程序收集与作用域命名');
+{
+  const project = {
+    meta: { pkg: 'com.example.demo' },
+    target: { id: 'fabric-26.3' },
+    entries: {
+      item: [{ id: 'iron_sword', nameZh: '铁剑' }],
+      block: [{ id: 'magic_block', nameZh: '魔法方块' }],
+    },
+    visual: {
+      programs: [
+        { op: 'event.player_tick', methodName: 'on_tick', next: block('player.heal', { inputs: { amount: value('number', 1) } }) },
+      ],
+    },
+  };
+  project.entries.item[0].visualPrograms = [
+    { op: 'event.item_use', methodName: 'should_be_ignored', next: block('player.heal', { inputs: { amount: value('number', 2) } }) },
+  ];
+  project.entries.block[0].visualPrograms = [
+    { op: 'event.block_break', next: block('player.message', { inputs: { text: value('text', 'boom') } }) },
+  ];
+
+  const r = compileProject(project, { targetId: 'fabric-26.3' });
+  ok(r.ok, '编译成功', r.errors.join('；'));
+  ok(r.compiled.length === 3, '收集到 3 个程序（1 全局 + 2 per-entry）', `${r.compiled.length}`);
+  const itemProg = r.compiled.find((c) => c.owner && c.owner.type === 'item' && c.owner.id === 'iron_sword');
+  ok(!!itemProg, '铁剑的 per-entry 程序被收集');
+  ok(itemProg.methodName === 'on_item_use_item_iron_sword', '方法名带 owner 作用域', itemProg.methodName);
+  ok(!itemProg.methodName.includes('should_be_ignored'), 'per-entry 忽略 methodName，强制作用域命名');
+  const file = r.files[0].content;
+  ok(file.includes('on_item_use_item_iron_sword'), '文件含 per-entry 方法');
+  ok(file.includes('on_tick'), '全局方法仍在');
+  // 同一个 item 写两段不同事件也不能撞名（item_use + rightclick_block）
+  const sword = project.entries.item[0];
+  sword.visualPrograms.push({ op: 'event.player_rightclick_block', next: block('player.heal', { inputs: { amount: value('number', 1) } }) });
+  const r2 = compileProject(project, { targetId: 'fabric-26.3' });
+  ok(r2.ok, '同条目多事件编译成功', r2.errors.join('；'));
+  ok(r2.files[0].content.includes('on_player_rightclick_block_item_iron_sword'), '第二段程序也带了作用域命名');
+}
+
+console.log('\n[23] 编译器守卫：非法 条目/事件 组合必须报错');
+{
+  ok(checkOwnerEvent('item', 'event.server_tick') !== null, 'item 不能拥有 server_tick');
+  ok(checkOwnerEvent('item', 'event.item_use') === null, 'item 能拥有 item_use');
+  ok(checkOwnerEvent('block', 'event.item_use') !== null, 'block 不能拥有 item_use');
+  ok(checkOwnerEvent('block', 'event.block_break') === null, 'block 能拥有 block_break');
+  ok(checkOwnerEvent('unknown', 'event.item_use') !== null, '未知条目类型报错');
+
+  const bad = {
+    meta: { pkg: 'com.example.demo' },
+    target: { id: 'fabric-26.3' },
+    entries: { item: [{ id: 'x', visualPrograms: [{ op: 'event.server_tick' }] }] },
+    visual: { programs: [] },
+  };
+  const rb = compileProject(bad, { targetId: 'fabric-26.3' });
+  ok(!rb.ok, '非法组合整体编译失败', rb.errors.join('；'));
+  ok(rb.errors.some((e) => e.includes('不能拥有事件')), '报出 owner 守卫错误');
+  ok(rb.compiled.length === 0, '非法程序不进 compiled（不会生成废方法）');
+}
+
+console.log('\n[24] 接线：per-entry 按 owner 过滤（Fabric + Forge）');
+{
+  const p = { meta: { pkg: 'com.example.demo' }, target: { id: 'fabric-26.3' } };
+  const fw = fabricVisual.visualWiring(p, {
+    compiled: [
+      { op: 'event.item_use', methodName: 'on_item_use_item_iron_sword', owner: { type: 'item', id: 'iron_sword' } },
+      { op: 'event.player_tick', methodName: 'on_tick', owner: null },
+    ],
+  });
+  ok(fw.includes('ModItems.IRON_SWORD'), 'Fabric 接线含 owner 引用');
+  ok(fw.includes('getItemInHand(hand).getItem() == ModItems.IRON_SWORD'), 'item_use 按物品过滤');
+  ok(fw.includes('import com.example.demo.registry.ModItems;'), '导入 ModItems');
+  ok(!fw.includes('import import'), '不会出现重复 import 前缀');
+  ok(!fw.includes('%method') && !fw.includes('%ref'), '占位符全部替换');
+
+  // Fabric 的 block owner 两个事件（rightclick_block / block_break）
+  const fwb = fabricVisual.visualWiring(p, {
+    compiled: [
+      { op: 'event.player_rightclick_block', methodName: 'on_player_rightclick_block_block_magic_block', owner: { type: 'block', id: 'magic_block' } },
+      { op: 'event.block_break', methodName: 'on_block_break_block_magic_block', owner: { type: 'block', id: 'magic_block' } },
+    ],
+  });
+  ok(fwb.includes('ModBlocks.MAGIC_BLOCK'), 'Fabric block owner 引用 ModBlocks');
+  ok(fwb.includes('hit.getBlockState().getBlock() == ModBlocks.MAGIC_BLOCK'), '右键方块按方块过滤');
+  ok(fwb.includes('state.getBlock() == ModBlocks.MAGIC_BLOCK'), '破坏方块按方块过滤');
+
+  const fg = forgeVisual.visualWiring(p, {
+    compiled: [
+      { op: 'event.block_break', methodName: 'on_block_break_block_magic_block', owner: { type: 'block', id: 'magic_block' } },
+      { op: 'event.player_tick', methodName: 'on_tick', owner: null },
+    ],
+  });
+  ok(fg.includes('ModBlocks.MAGIC_BLOCK'), 'Forge 接线含 block owner 引用');
+  ok(fg.includes('event.getState().getBlock() == ModBlocks.MAGIC_BLOCK'), 'block_break 按方块过滤');
+  ok(fg.includes('import com.example.demo.registry.ModBlocks;'), 'Forge 导入 ModBlocks');
+  ok(!fg.includes('import import'), 'Forge 不会出现重复 import 前缀');
+  ok(!fg.includes('%handler') && !fg.includes('%ref'), 'Forge 占位符全部替换');
 }
 
 console.log(`\n${failed === 0 ? '全部通过' : `有 ${failed} 项失败`}\n`);

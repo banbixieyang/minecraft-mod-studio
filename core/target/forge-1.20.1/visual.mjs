@@ -14,6 +14,81 @@
  * ⚠️ 1.20.1 没有 PlayerEntity，玩家类是 net.minecraft.world.entity.player.Player。
  */
 
+import { toConstant } from '../../ids.mjs';
+
+/** 条目 → 注册表引用 + 需要的 import（per-entry 接线用它来过滤「只有这个条目才触发」） */
+function ownerRef(owner, pkg) {
+  // 注意：这里只返回类的全限定名，import 前缀由 genVisual 统一加，否则会重复。
+  // Forge 用 DeferredRegister，字段是 RegistryObject<Item/Block>，比较时要 .get() 取出真实实例，
+  // 否则 `getItem() == ModItems.X` 会因「Item vs RegistryObject<Item>」类型不匹配编译失败。
+  if (owner.type === 'block') {
+    return { expr: `ModBlocks.${toConstant(owner.id)}.get()`, imp: `${pkg}.registry.ModBlocks` };
+  }
+  return { expr: `ModItems.${toConstant(owner.id)}.get()`, imp: `${pkg}.registry.ModItems` };
+}
+
+/**
+ * per-entry 接线：条目类型 + 事件 op → 带 owner 过滤的处理器。
+ * 全局程序（owner 为空）走下面的 WIRING，行为不变。
+ */
+const OWNED = {
+  'event.item_use|item': {
+    handlerName: 'onUseItem',
+    eventClass: 'net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickItem',
+    handler: `    @net.minecraftforge.eventbus.api.SubscribeEvent
+    public static void %handler(net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickItem event) {
+        if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)) return;
+        if (player.getItemInHand(event.getHand()).getItem() == %ref) {
+            %method(player, event.getLevel(), event.getHand());
+        }
+    }`,
+  },
+  'event.player_rightclick_block|item': {
+    handlerName: 'onRightClickBlock',
+    eventClass: 'net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock',
+    handler: `    @net.minecraftforge.eventbus.api.SubscribeEvent
+    public static void %handler(net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)) return;
+        if (player.getItemInHand(event.getHand()).getItem() == %ref) {
+            %method(player, event.getLevel(), event.getHand(), event.getHitVec());
+        }
+    }`,
+  },
+  'event.player_rightclick_block|block': {
+    handlerName: 'onRightClickBlock',
+    eventClass: 'net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock',
+    handler: `    @net.minecraftforge.eventbus.api.SubscribeEvent
+    public static void %handler(net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)) return;
+        if (event.getLevel().getBlockState(event.getHitVec().getBlockPos()).getBlock() == %ref) {
+            %method(player, event.getLevel(), event.getHand(), event.getHitVec());
+        }
+    }`,
+  },
+  'event.block_break|block': {
+    handlerName: 'onBlockBreak',
+    eventClass: 'net.minecraftforge.event.level.BlockEvent.BreakEvent',
+    handler: `    @net.minecraftforge.eventbus.api.SubscribeEvent
+    public static void %handler(net.minecraftforge.event.level.BlockEvent.BreakEvent event) {
+        if (!(event.getPlayer() instanceof net.minecraft.server.level.ServerPlayer player)) return;
+        if (event.getState().getBlock() == %ref) {
+            %method(player, (net.minecraft.world.level.Level) event.getLevel(), event.getPos(), event.getState());
+        }
+    }`,
+  },
+  'event.entity_attack|item': {
+    handlerName: 'onAttackEntity',
+    eventClass: 'net.minecraftforge.event.entity.player.AttackEntityEvent',
+    handler: `    @net.minecraftforge.eventbus.api.SubscribeEvent
+    public static void %handler(net.minecraftforge.event.entity.player.AttackEntityEvent event) {
+        if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)) return;
+        if (player.getMainHandItem().getItem() == %ref) {
+            %method(player, player.level(), event.getTarget());
+        }
+    }`,
+  },
+};
+
 /** 事件接线：帽形 op → { 处理方法名, 事件类, 处理代码模板 } */
 const WIRING = {
   'event.player_rightclick_block': {
@@ -77,34 +152,47 @@ const WIRING = {
 /**
  * 生成接线代码。
  * @param {object} p 工程数据
- * @param {object} info { compiled: [{ op, methodName }] }
+ * @param {object} info { compiled: [{ op, methodName, owner }] }
  * @returns {string} Java 代码（可为空）
  */
 export function visualWiring(p, info) {
   const compiled = info?.compiled || [];
   if (!compiled.length) return '';
 
+  const pkg = p?.meta?.pkg || 'com.example.mymod';
   const handlers = [];
   const imports = new Set();
   // 同一个事件写了两段程序 → 处理方法名要加后缀，否则 Java 报重复定义
   const usedHandlers = new Set();
 
-  for (const item of compiled) {
-    const w = WIRING[item.op];
-    if (!w) continue;
-    imports.add(w.eventClass);
-    let hn = w.handlerName;
+  const addHandler = (def, methodName, refExpr, refImp) => {
+    imports.add(def.eventClass);
+    if (refImp) imports.add(refImp);
+    let hn = def.handlerName;
     if (usedHandlers.has(hn)) {
       let k = 2;
-      while (usedHandlers.has(`${w.handlerName}${k}`)) k++;
-      hn = `${w.handlerName}${k}`;
+      while (usedHandlers.has(`${def.handlerName}${k}`)) k++;
+      hn = `${def.handlerName}${k}`;
     }
     usedHandlers.add(hn);
-    handlers.push(
-      w.handler
-        .split('%handler').join(hn)
-        .split('%method').join(item.methodName),
-    );
+    let h = def.handler.split('%handler').join(hn).split('%method').join(methodName);
+    if (refExpr !== undefined) h = h.split('%ref').join(refExpr);
+    handlers.push(h);
+  };
+
+  for (const item of compiled) {
+    // per-entry 程序：带 owner 过滤，只有对应的物品/方块才触发
+    if (item.owner) {
+      const def = OWNED[`${item.op}|${item.owner.type}`];
+      if (!def) continue; // 非法组合已被编译器守卫拦下，这里兜底跳过
+      const ref = ownerRef(item.owner, pkg);
+      addHandler(def, item.methodName, ref.expr, ref.imp);
+      continue;
+    }
+    // 全局程序：不加过滤，事件一律触发（保持原行为）
+    const w = WIRING[item.op];
+    if (!w) continue;
+    addHandler(w, item.methodName);
   }
   if (!handlers.length) return '';
 

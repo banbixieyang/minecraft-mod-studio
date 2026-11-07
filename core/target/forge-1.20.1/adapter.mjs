@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { toPascal } from '../../ids.mjs';
+import { toPascal, toConstant } from '../../ids.mjs';
 import * as java from './java.mjs';
 import * as visual from './visual.mjs';
 
@@ -275,5 +275,18 @@ description='''\${mod_description}'''
   /** 可视化积木的事件接线 */
   visualWiring(p, info) {
     return visual.visualWiring(p, info);
+  },
+
+  /**
+   * 条目 → 注册表引用（per-entry 积木接线用来过滤「只有这个物品/方块才触发」）。
+   *
+   * ⚠️ Forge 用 DeferredRegister，字段是 RegistryObject<Item>/RegistryObject<Block>，
+   * 不是直接的 Item/Block。比较时要调 .get() 取出真正的实例，
+   * 否则 `getItem() == ModItems.X` 会因「Item vs RegistryObject<Item>」类型不匹配而编译失败。
+   * （Fabric 字段就是 Item/Block，不需要 .get()。）
+   */
+  refs: {
+    item(id) { return `ModItems.${toConstant(id)}.get()`; },
+    block(id) { return `ModBlocks.${toConstant(id)}.get()`; },
   },
 };

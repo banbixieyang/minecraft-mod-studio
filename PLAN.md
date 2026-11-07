@@ -230,6 +230,32 @@ public final class CustomContent {
 **事件接线**：帽形积木（hat）定义自己的触发点（`rightclick_block` / `tick` / `attack` / `break_block`），
 编译器生成对应方法，方法名固定为 `program_<事件>_<序号>`，并生成注册代码插进 `CustomContent.init()`。
 
+### 8.1 条目级（Per-Entry）积木绑定
+
+除了挂在工程全局 `visual.programs` 的程序，每个**物品 / 方块条目**也能自带积木程序
+（`entry.visualPrograms`），实现「某把剑使用时有专属效果、某方块被右键才触发」这类需求——
+事件只对该条目触发，不和其它条目混在一起。
+
+- **数据**：条目对象加 `visualPrograms: [ { op: 'event.item_use', next: … } ]`；
+  编译时带上 `owner: { type: 'item'|'block', id }`，用于方法名作用域与接线过滤。
+- **守卫**：`OWNER_EVENT_RULES` 限定「条目类型 + 事件 op」的合法配对（见下表），
+  不兼容的组合在**编译期直接报错**（`checkOwnerEvent` 返回中文原因），绝不生成一段永远触发不到的方法。
+- **方法名作用域**：per-entry 程序的方法名强制带 owner 后缀，
+  `${METHOD_PREFIX[op]}_${owner.type}_${sanitizeOwnerId(id)}`（如 `on_item_use_item_ruby`），
+  保证不同条目互不撞车。全局程序（`owner: null`）仍走原有的 `program_<事件>_<序号>` 规则。
+- **接线过滤**：`core/target/*/visual.mjs` 的 `OWNED` 表按 `事件|类型` 给出带 owner 过滤的
+  回调模板（如 `item_use` 对 item 过滤 `player.getItemInHand(hand).getItem() == ModItems.RUBY`）；
+  无 owner 的程序走原 `WIRING` 表。两个目标的 import 都只引入 `ModItems`/`ModBlocks`
+  的 FQN 一次，避免重复 import 导致编译失败。
+
+| 条目类型 | 可拥有的事件 |
+|---|---|
+| `item` | `event.item_use`（使用物品）、`event.player_rightclick_block`（手持右键）、`event.entity_attack`（手持攻击） |
+| `block` | `event.player_rightclick_block`（被右键）、`event.block_break`（被破坏） |
+
+> UI 入口（在物品/方块编辑面板里挂积木）为后续工作；本阶段只完成编译 + 生成 + 真编译验证后端，
+> 以及 `tests/visual.mjs` [22]–[24] 单元与 `tests/visual-build.mjs` 的 Gradle 真编译验证。
+
 ---
 
 ## 9. API 点与来源（不许凭记忆）
