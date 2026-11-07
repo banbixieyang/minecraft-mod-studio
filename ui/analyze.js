@@ -51,6 +51,7 @@ export function renderAnalyzePanel(ctx) {
       el('h2.panel-title', { text: '分析外部 mod' }),
       el('div.spacer'),
       el('button.btn.ghost.small', { onclick: () => openBrowser() }, '浏览文件…'),
+      el('button.btn.ghost.small', { onclick: () => openDecompiledSource() }, '反编译看源码'),
     ),
   );
 
@@ -267,6 +268,156 @@ export function renderAnalyzePanel(ctx) {
     } catch (e) {
       toast(e.message, 'error', 6000);
     }
+  }
+
+  /**
+   * 反编译整个 jar，按类看「原本代码」+ 引用。
+   *
+   * 发布版 jar 只有 .class，直接读 .java 是读不到的（除非是 sources jar）；
+   * 这里用 ForgeFlower 真反编译，产出的是 Java 源码而不是常量池证据。
+   */
+  async function openDecompiledSource() {
+    if (!A.path) {
+      toast('先选一个 jar', 'warn');
+      return;
+    }
+    let info;
+    try {
+      info = await api.decompileInfo();
+    } catch {
+      info = { available: false };
+    }
+    if (!info.available) {
+      toast(
+        '没找到反编译器（ForgeFlower）。把 forgeflower*.jar 放到 tools/forgeflower.jar，'
+        + '或设置环境变量 MCSTUDIO_DECOMPILER 指向它。',
+        'error',
+        9000,
+      );
+      return;
+    }
+
+    let res;
+    try {
+      toast('反编译中…大 jar 可能要几分钟');
+      res = await api.decompileJar(A.path);
+    } catch (e) {
+      toast(`反编译失败：${e.message}`, 'error', 9000);
+      return;
+    }
+    if (!res.classes.length) {
+      toast('反编译完成，但没有找到类', 'warn');
+      return;
+    }
+
+    const all = res.classes;
+    const known = new Set(all.map((c) => c.fqcn)); // 只有包里的类能点进去看
+    let cur = '';
+
+    const search = el('input.input.decompile-search', {
+      placeholder: '搜类名 / 包名…', type: 'search', spellcheck: 'false',
+    });
+    const list = el('div.decompile-list');
+    const head = el('div.decompile-head', { text: '选一个类' });
+    const source = el('pre.code-body.source-view', { text: '左侧选一个类，看它原本是怎么写的' });
+    const refBox = el('div.ref-box');
+    // 引用列表默认展开；读长源码时可以收起来换高度
+    const refToggle = el('button.btn.ghost.small', { title: '展开 / 收起引用列表' }, '引用');
+
+    const paintList = () => {
+      const q = search.value.trim().toLowerCase();
+      const hit = q ? all.filter((c) => c.fqcn.toLowerCase().includes(q)) : all;
+      const shown = hit.slice(0, 400);
+      setChildren(list, ...shown.map((c) => el(
+        `button.decompile-item${c.fqcn === cur ? '.active' : ''}`,
+        { title: c.rel, onclick: () => select(c.fqcn) },
+        el('span.decompile-item-name', { text: c.className }),
+        el('span.decompile-item-pkg', { text: c.pkg || '(默认包)' }),
+      )));
+      if (!hit.length) setChildren(list, el('div.decompile-empty', { text: '没有匹配的类' }));
+      else if (hit.length > shown.length) {
+        list.append(el('div.decompile-empty', { text: `还有 ${hit.length - shown.length} 个，缩小关键词` }));
+      }
+    };
+
+    // 引用标签：包里的类可点，外部依赖（gson、原版类）只展示
+    const chip = (r) => (known.has(r)
+      ? el('button.ref-chip.inner', { text: r, title: '看这个类的源码', onclick: () => select(r) })
+      : el('span.ref-chip', { text: r, title: '外部依赖，不在此 jar 内' }));
+
+    const paintRefs = (c) => {
+      const cut = (arr) => (arr.length > 80
+        ? [...arr.slice(0, 80).map(chip), el('span.ref-chip.more', { text: `…还有 ${arr.length - 80} 个` })]
+        : arr.map(chip));
+      setChildren(
+        refBox,
+        el('div.ref-title', { text: `用到了（${c.refs.length}）` }),
+        el('div.ref-list', {}, ...cut(c.refs)),
+        el('div.ref-title', { text: `被谁用（${c.referencedBy.length}）` }),
+        el('div.ref-list', {}, ...cut(c.referencedBy)),
+      );
+      refToggle.textContent = `引用 ${c.refs.length + c.referencedBy.length}`;
+    };
+
+    async function select(fqcn) {
+      cur = fqcn;
+      paintList();
+      head.textContent = fqcn;
+      source.textContent = '读取源码…';
+      try {
+        const c = await api.classSource(A.path, fqcn);
+        if (cur !== fqcn) return; // 连点好几个类时只认最后一个
+        source.textContent = c.source;
+        source.scrollTop = 0;
+        paintRefs(c);
+      } catch (e) {
+        source.textContent = `读取失败：${e.message}`;
+      }
+    }
+
+    search.addEventListener('input', paintList);
+
+    const copyBtn = el('button.btn.ghost.small', {
+      title: '复制当前源码',
+      onclick: async () => {
+        if (!cur) return;
+        if (!navigator.clipboard) { toast('浏览器不允许访问剪贴板', 'warn'); return; }
+        try {
+          await navigator.clipboard.writeText(source.textContent || '');
+          toast('源码已复制');
+        } catch {
+          toast('复制失败，请手动选中', 'warn');
+        }
+      },
+    }, '复制');
+
+    const view = el('div.decompile-view', {},
+      el('div.decompile-side', {}, search, list),
+      el('div.decompile-main', {},
+        el('div.decompile-headbar', {}, head, el('div.spacer'), refToggle, copyBtn),
+        source,
+        refBox,
+      ),
+    );
+    refToggle.onclick = () => {
+      view.classList.toggle('refs-off');
+      refToggle.classList.toggle('on', view.classList.contains('refs-off'));
+    };
+
+    modal({
+      title: `原始实现 · ${res.cached ? '缓存命中' : '已反编译'} · ${all.length} 个类`,
+      width: 1040,
+      body: view,
+      actions: [{ label: '关闭', kind: 'ghost' }],
+    });
+
+    paintList();
+    // 默认打开一个「有肉」的类：优先主类（类名不含 $ 的最短 FQN），
+    // 否则第一个 —— 免得一进来正对着一个内部类发呆。
+    const top = all
+      .filter((c) => !c.className.includes('$'))
+      .sort((x, y) => x.fqcn.length - y.fqcn.length)[0] || all[0];
+    await select(top.fqcn);
   }
 
   /** 内嵌 jar 拆出来变成一个普通导入文件，就能用同一套界面分析 */

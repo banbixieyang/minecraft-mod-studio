@@ -82,6 +82,13 @@ Windows 上想双击启动，可以自己做一个 `.bat` 调 `node studio.mjs s
 支持 Fabric / Quilt / Forge / NeoForge / 老 `mcmod.info`，
 带签名的、内嵌 jar 的、中文文件名的都能读。
 
+**看不懂就反编译** —— 常量池只能告诉你「它调了哪些 API」，看不到方法体。
+分析面板的「**反编译看源码**」用 ForgeFlower 把 `.class` 还原成真 Java：
+左边搜类名、右边读源码（带 if/for/常量），下面两行标签是**引用关系** ——
+「用到了」顺着点下去能从物品注册一路追到命中时干了什么，「被谁用」反过来查这个方法在哪被调用。
+引用可点、源码可复制、大包结果按 jar 缓存（第二次秒开），缓存放在 `~/.mcstudio/decompile/`。
+按 366 个类的真实 mod 包验证过：反编译 13 秒、索引 0.5 秒、切类瞬时。
+
 ![分析报告](docs/screenshots/23-分析报告.png)
 
 **学得会** —— 内置知识库（指南 / 速查 / 任务卡）可搜可跳，
@@ -145,7 +152,7 @@ core/                  引擎（纯 Node 模块，不碰 DOM）
   generator/           通用生成流水线：资源 JSON、贴图、写盘与指纹
   modules/             模块注册表（扫描 modules/ 与 <工程>/.studio/modules）
   library/             效果包：Pack 格式、包库、捕获、安装、内置效果模板
-  analyze/             分析器：ZIP 读取、第三方元数据、导入缓存、class 常量池、资源反推、能力识别
+  analyze/             分析器：ZIP 读取、第三方元数据、导入缓存、class 常量池、资源反推、能力识别、ForgeFlower 反编译与引用索引
   knowledge/           知识库：文档解析、来源发现、章节级检索、分析沉淀
   ai/                  模型接入：三家协议适配、按平台拼上下文、错误分类
   hooks/               代码钩子（Java 锚点 + JS 钩子）+ 装钩子前的静态检查

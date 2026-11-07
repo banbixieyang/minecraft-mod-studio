@@ -211,6 +211,10 @@ export const api = {
   removeUpload: (path) => request('POST', '/api/analyze/upload-remove', { path }),
   extractInner: (body) => request('POST', '/api/analyze/extract-inner', body),
   readJarSource: (path, entry) => request('POST', '/api/analyze/source', { path, entry }),
+  // 反编译（发布版 jar 只有 .class）→ 真 Java 源码 + 引用
+  decompileInfo: () => request('GET', '/api/analyze/decompile-info'),
+  decompileJar: (path, force = false) => request('POST', '/api/analyze/decompile', { path, force }),
+  classSource: (path, className) => request('POST', '/api/analyze/class-source', { path, className }),
 
   // ---------- 知识库 ----------
   knowledgeList: () => request('GET', '/api/knowledge/list'),

@@ -330,3 +330,56 @@ public final class CustomContent {
 2. **代码落地形态**：独立方法体（编译产物在 `custom/CustomContent.java` 的独立区段）
 3. **库来源**：常用积木（内置）+ Goety 三包转库 + 任意 mod 分析自动转库 + 从代码反向造积木
 4. **双向要求**：积木→代码（必须正确）+ 代码→积木（尽力而为，不丢代码）
+
+---
+
+## 13. 拆解侧：真反编译 + 引用索引
+
+需求原文：「拆解 jar 时要有它原本代码和引用查看，也就是说，我可以知道原本一个道具的效果是怎么实现的。」
+
+### 13.1 为什么必须真反编译
+
+已有的 class 分析（`core/analyze/classfile.mjs`）读的是常量池：能证明「引用了哪些 API、
+出现了哪些数字」，**看不到方法体**。要回答「这道具的效果怎么实现的」，只有两条路：
+读源码（发布包没有），或者反编译。
+
+选择 **ForgeFlower**（Fernflower 分支）的原因：ForgeGradle 本来就会把它下载到
+`~/.gradle/caches/forge_gradle/maven_downloader/net/minecraftforge/forgeflower/<ver>/`，
+**不引入任何新依赖**，也不需要 npm 包或联网。
+
+### 13.2 模块与接口
+
+`core/analyze/decompile.mjs`：
+
+| 导出 | 作用 |
+|---|---|
+| `findDecompiler()` | 按 `MCSTUDIO_DECOMPILER` → `tools/forgeflower.jar` → ForgeGradle 缓存 找；找不到返回 `null` |
+| `decompileJar(path, {cacheDir, force})` | 反编译成 `.java` 目录，返回 `{dir, cached, files, decompiler}` |
+| `buildReferenceIndex(dir)` | 类 → 源码的索引 + 反向引用（谁引用了谁） |
+| `classSource(index, name)` | 一个类的源码 + `refs` + `referencedBy` |
+| `decompileCacheDir()` | 默认 `~/.mcstudio/decompile` |
+
+- **缓存**：key = `sha1(绝对路径 + size + mtime)`，产出目录带 `.done` 标记；
+  命中直接复用。重编先清场，避免上一轮的产出 jar 被当成本轮结果。
+- **不放 jar 旁边**：分析别人的发布包不该往人家 `build/libs` 里扔目录。
+- **索引缓存**：按目录 mtime 失效 —— 界面每切一个类请求一次，不缓存会重读上千个文件。
+- **引用匹配**：`import` 精确命中 + 源码里出现的 `[A-Z][A-Za-z0-9_]*` 类型名。
+  允许单字母类名（`A`/`B`/`T` 在混淆包和内部类里很常见），否则反查会漏。
+  这是粗匹配，**不假装是 Java 解析器**：只对「想知道它调了哪些类」够用。
+
+### 13.3 界面
+
+分析面板顶栏 →「反编译看源码」：
+
+- 左：全部类的可搜索列表（类名 + 包名），默认选中主类（不含 `$` 的最短 FQN）
+- 右：真 Java 源码，可复制；「引用 N」按钮收起引用列表把高度还给源码
+- 下：`用到了` / `被谁用` 两行标签 —— **包内的类可点击跳转**，外部依赖（gson、原版）只展示
+
+界面验证方式：`tests/visual-ui.mjs` + CDP 脚本驱动真浏览器，实测 366 类的真实
+mod 包 —— 反编译 13.4s、索引 0.5s、切类 <10ms、引用跳转与搜索均生效。
+
+### 13.4 边界
+
+- 反编译**不是**反混淆：被重映射的方法名（`m_12345_`）还是不可读，但控制流在。
+- 参数名可能是 `var0`/`var1` —— 发布包没带局部变量表，原件就没存名字。
+- 没有 ForgeFlower 时按钮明确报错并说清往哪放，**绝不拿常量池证据冒充源码**。

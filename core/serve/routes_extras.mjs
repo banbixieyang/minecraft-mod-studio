@@ -17,6 +17,9 @@ import { renderText } from '../library/pack.mjs';
 import { analyze, reportToPack, reportSummary, closeReport } from '../analyze/report.mjs';
 import { openSource } from '../analyze/sources.mjs';
 import {
+  findDecompiler, decompileJar, buildReferenceIndex, classSource,
+} from '../analyze/decompile.mjs';
+import {
   MAX_UPLOAD, saveJarBytes, listImportedJars, removeImportedJar, isNestedJarEntry,
 } from '../analyze/imports.mjs';
 
@@ -442,6 +445,51 @@ export async function handleExtras(req, res, route, q) {
       return ok(res, { entry, text });
     } catch (e) {
       return fail(res, 400, `读取失败：${e.message}`);
+    }
+  }
+
+  // 有没有可用的反编译器（ForgeFlower）—— 界面据此启用/禁用「反编译看源码」
+  if (route === 'analyze/decompile-info' && method === 'GET') {
+    const d = findDecompiler();
+    return ok(res, { available: !!d, decompiler: d || '' });
+  }
+
+  // 反编译整个 jar：发布版只有 .class，这一步给出真正的 Java 源码 + 类清单
+  if (route === 'analyze/decompile' && method === 'POST') {
+    const body = await readBody(req);
+    const abs = path.resolve(String(body.path || ''));
+    if (!fs.existsSync(abs)) return fail(res, 400, 'jar 不存在');
+    try {
+      const r = decompileJar(abs, { force: !!body.force });
+      const idx = buildReferenceIndex(r.dir);
+      return ok(res, {
+        dir: r.dir,
+        cached: r.cached,
+        files: r.files,
+        decompiler: r.decompiler,
+        classes: idx.classes.map((c) => ({
+          fqcn: c.fqcn, className: c.className, pkg: c.pkg, rel: c.rel,
+        })),
+      });
+    } catch (e) {
+      return fail(res, 400, e.message || String(e));
+    }
+  }
+
+  // 一个类的源码 + 它引用了谁 + 谁引用了它
+  if (route === 'analyze/class-source' && method === 'POST') {
+    const body = await readBody(req);
+    const abs = path.resolve(String(body.path || ''));
+    const name = String(body.className || body.class || '').trim();
+    if (!fs.existsSync(abs)) return fail(res, 400, 'jar 不存在');
+    if (!name) return fail(res, 400, '缺少 className');
+    try {
+      const r = decompileJar(abs);
+      const idx = buildReferenceIndex(r.dir);
+      const c = classSource(idx, name);
+      return ok(res, { ...c, cached: r.cached });
+    } catch (e) {
+      return fail(res, 400, e.message || String(e));
     }
   }
 
