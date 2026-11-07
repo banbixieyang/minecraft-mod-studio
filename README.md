@@ -144,6 +144,8 @@ Windows 上想双击启动，可以自己做一个 `.bat` 调 `node studio.mjs s
 - **模块开发 / 加新版本**：[`docs/module-guide.md`](docs/module-guide.md)
 - **复用与分析**（效果库、包、导入别人的 mod）：[`docs/reuse-and-analysis.md`](docs/reuse-and-analysis.md)
 - **知识库与 AI 助手**：[`docs/knowledge-and-ai.md`](docs/knowledge-and-ai.md)
+- **把工具交给 AI 用**（交接书：数据格式 / 命令 / 引用规则的坑）：[`docs/ai-handoff.md`](docs/ai-handoff.md)
+- **一页粘贴版**（直接复制给对话模型）：[`docs/ai-brief.md`](docs/ai-brief.md)
 
 应用内的「学习」面板能搜到以上全部内容 —— 不用离开工具就能查。
 
