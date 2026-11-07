@@ -81,6 +81,144 @@
           "hint": "0 = 贴着空气也保留。原版深层矿常用 0.5 让它藏得深"
         }
       ]
+    },
+    {
+      "id": "dimension",
+      "label": "自定义维度",
+      "singular": "维度",
+      "group": "世界",
+      "icon": "🌐",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 crystal_world。建好世界后，进这个维度用指令：/execute in <你的id>:crystal_world run tp ~ ~ ~（可以把它写进命令方块或绑定到按键事件里的一键传送）" },
+        {
+          "key": "effects",
+          "label": "环境效果",
+          "type": "select",
+          "default": "overworld",
+          "options": [
+            { "value": "overworld", "label": "主世界（天蓝、云、昼夜）" },
+            { "value": "nether", "label": "下界（红雾、固定时间、炽热）" },
+            { "value": "end", "label": "末地（黑空、星点、无昼夜）" }
+          ],
+          "hint": "决定天空颜色、雾、环境光这套观感，以及「烧不烧」用的方块标签"
+        },
+        { "key": "hasSkylight", "label": "有天空光照", "type": "checkbox", "default": true },
+        { "key": "hasCeiling", "label": "有天花板（像下界顶上的基岩）", "type": "checkbox", "default": false },
+        { "key": "ultrawarm", "label": "炽热（水会蒸发、像下界）", "type": "checkbox", "default": false },
+        { "key": "natural", "label": "自然维度（影响刷怪与创造模式切换）", "type": "checkbox", "default": true },
+        { "key": "piglinSafe", "label": "猪灵不会发狂", "type": "checkbox", "default": false },
+        { "key": "bedWorks", "label": "床能睡觉", "type": "checkbox", "default": true },
+        { "key": "respawnAnchorWorks", "label": "重生锚能用", "type": "checkbox", "default": false },
+        { "key": "hasRaids", "label": "会触发袭击", "type": "checkbox", "default": true },
+        {
+          "key": "coordinateScale",
+          "label": "坐标缩放",
+          "type": "number",
+          "default": 1,
+          "step": 0.5,
+          "min": 0.01,
+          "max": 64,
+          "hint": "下界是 8（主世界走 1 格 = 下界走 8 格）。决定跨维度传送时坐标怎么换算"
+        },
+        {
+          "key": "ambientLight",
+          "label": "环境光强度",
+          "type": "number",
+          "default": 0,
+          "step": 0.1,
+          "min": 0,
+          "max": 1,
+          "hint": "1 = 永远全亮（像下界），0 = 靠天光/火把"
+        },
+        {
+          "key": "fixedTime",
+          "label": "固定时间（游戏刻）",
+          "type": "number",
+          "default": -1,
+          "min": -1,
+          "max": 24000,
+          "hint": "-1 = 不固定（正常昼夜）；下界用 18000、末地用 6000"
+        },
+        {
+          "key": "minY",
+          "label": "最低 Y",
+          "type": "number",
+          "default": -64,
+          "min": -2032,
+          "max": 2031
+        },
+        {
+          "key": "height",
+          "label": "世界高度",
+          "type": "number",
+          "default": 384,
+          "min": 16,
+          "max": 4096,
+          "hint": "从 minY 往上算的总高度。主世界默认 -64~320 = 384"
+        },
+        {
+          "key": "logicalHeight",
+          "label": "逻辑高度",
+          "type": "number",
+          "default": 384,
+          "min": 16,
+          "max": 4096,
+          "hint": "玩家能上去的最高高度，通常和「世界高度」一致"
+        },
+        {
+          "key": "monsterSpawnLightLevel",
+          "label": "刷怪所需光照上限",
+          "type": "number",
+          "default": 0,
+          "min": 0,
+          "max": 15,
+          "hint": "下界/末地常设 0 让怪在亮处也刷"
+        },
+        {
+          "key": "monsterSpawnBlockLightLimit",
+          "label": "刷怪方块光上限",
+          "type": "number",
+          "default": 0,
+          "min": 0,
+          "max": 15
+        },
+        {
+          "key": "generator",
+          "label": "地形生成器",
+          "type": "select",
+          "default": "noise",
+          "options": [
+            { "value": "noise", "label": "噪声地形（正常山脉洞穴，可指定单一生物群系）" },
+            { "value": "flat", "label": "超平坦（一层方块，适合建筑/空岛）" },
+            { "value": "debug", "label": "调试世界（每格一种方块，用来查材质）" }
+          ]
+        },
+        {
+          "key": "biome",
+          "label": "生物群系",
+          "type": "text",
+          "default": "minecraft:plains",
+          "placeholder": "minecraft:plains",
+          "showIf": [{ "field": "generator", "in": ["noise", "flat"] }],
+          "hint": "noise 模式用「固定单一群系」；flat 模式决定地表群系"
+        },
+        {
+          "key": "seed",
+          "label": "地形种子",
+          "type": "number",
+          "default": 0,
+          "showIf": [{ "field": "generator", "equals": "noise" }],
+          "hint": "换种子换地貌；留 0 用世界种子"
+        },
+        {
+          "key": "flatBlock",
+          "label": "平坦层方块",
+          "type": "text",
+          "default": "minecraft:stone",
+          "placeholder": "minecraft:stone",
+          "showIf": [{ "field": "generator", "equals": "flat" }]
+        }
+      ]
     }
   ]
 }

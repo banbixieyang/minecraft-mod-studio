@@ -38,6 +38,7 @@ const SUITES = [
   { file: 'analyze.mjs' },
   { file: 'cookbook.mjs', slow: 'build', buildArgs: ['--build'] },
   { file: 'decompile.mjs' },
+  { file: 'dimension.mjs' },
   { file: 'docs.mjs' },
   { file: 'effects.mjs', slow: 'build', buildArgs: ['--build'] },
   { file: 'ext.mjs' },

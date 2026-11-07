@@ -207,6 +207,15 @@ export function genData(p, adapter) {
     }
   }
 
+  // ---- 自定义维度 ----
+  // 维度是「数据驱动」的：只要 data/<ns>/dimension/ 下有一份合法的 json，
+  // 游戏建世界时就会自动加载这个维度（无需任何 Java）。要进去用 /goto <id>（见 ModDimensions）。
+  for (const d of p.entries.dimension || []) {
+    if (!d.id) continue;
+    add(`dimension_type/${d.id}.json`, j(buildDimensionType(d)));
+    add(`dimension/${d.id}.json`, j(buildDimension(d, ns)));
+  }
+
   return files;
 }
 
@@ -537,6 +546,83 @@ function buildPlacedFeature(p, w, ns) {
   });
   placement.push({ type: 'minecraft:biome' });
   return { feature: `${ns}:${w.id}`, placement };
+}
+
+// ============================================================
+// 自定义维度
+// ============================================================
+function clampInt(v, fallback, min, max) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function biomeId(d, ns) {
+  const b = (d.biome || 'minecraft:plains').trim();
+  return b.includes(':') ? b : `minecraft:${b}`;
+}
+
+/**
+ * 维度类型（dimension_type/<id>.json）。
+ * effects 决定天空/雾/环境光这套观感，也决定「烧不烧」用的方块标签（infiniburn）。
+ */
+function buildDimensionType(d) {
+  const eff = d.effects || 'overworld';
+  const effId = eff === 'nether' ? 'minecraft:nether' : eff === 'end' ? 'minecraft:the_end' : 'minecraft:overworld';
+  const infiniburn = `#minecraft:infiniburn_${eff === 'nether' ? 'nether' : eff === 'end' ? 'end' : 'overworld'}`;
+  // 默认勾选的开关用「!== false」：条目里没写（导入工程 / 没碰过表单）时按 true 处理，
+  // 显式取消勾选存的是 false，会被正确识别为 false。默认不勾的才用 !!。
+  const type = {
+    ambient_light: num(d.ambientLight, 0),
+    bed_works: d.bedWorks !== false,
+    coordinate_scale: num(d.coordinateScale, 1),
+    effects: effId,
+    has_ceiling: !!d.hasCeiling,
+    has_raids: d.hasRaids !== false,
+    has_skylight: d.hasSkylight !== false,
+    infiniburn,
+    logical_height: clampInt(d.logicalHeight, 384, 16, 4096),
+    min_y: clampInt(d.minY, -64, -2032, 2031),
+    height: clampInt(d.height, 384, 16, 4096),
+    monster_spawn_block_light_limit: clampInt(d.monsterSpawnBlockLightLimit, 0, 0, 15),
+    monster_spawn_light_level: clampInt(d.monsterSpawnLightLevel, 0, 0, 15),
+    piglin_safe: !!d.piglinSafe,
+    respawn_anchor_works: !!d.respawnAnchorWorks,
+    ultrawarm: !!d.ultrawarm,
+    natural: d.natural !== false,
+  };
+  const ft = Math.round(num(d.fixedTime, -1));
+  if (ft >= 0) type.fixed_time = ft;
+  return type;
+}
+
+/**
+ * 维度本身（dimension/<id>.json）：引用上面那份类型，并给出地形生成器。
+ * - noise：正常地形，但生物群系固定成用户选的那个（简单可控）
+ * - flat：超平坦，一层方块
+ * - debug：调试世界（每格一种方块）
+ */
+function buildDimension(d, ns) {
+  const id = `${ns}:${d.id}`;
+  const gen = d.generator || 'noise';
+  let generator;
+  if (gen === 'flat') {
+    const block = (d.flatBlock || 'minecraft:stone').includes(':') ? d.flatBlock : `minecraft:${d.flatBlock || 'stone'}`;
+    generator = {
+      type: 'minecraft:flat',
+      settings: { biome: biomeId(d, ns), features: true, layers: [{ block, height: 1 }] },
+    };
+  } else if (gen === 'debug') {
+    generator = { type: 'minecraft:debug' };
+  } else {
+    generator = {
+      type: 'minecraft:noise',
+      seed: Math.round(num(d.seed, 0)),
+      biome_source: { type: 'minecraft:fixed', biome: biomeId(d, ns) },
+      settings: 'minecraft:overworld',
+    };
+  }
+  return { type: id, generator };
 }
 
 /** 世界生成要挂到哪些生物群系 —— 交给 ModWorldGen 那种启动期代码，这里只输出描述供界面显示 */

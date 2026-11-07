@@ -22,6 +22,9 @@ const DIRS = {
   loot: ['data/{ns}/loot_table', 'data/{ns}/loot_tables'],
   feature: ['data/{ns}/worldgen/feature', 'data/{ns}/worldgen/configured_feature'],
   placed: ['data/{ns}/worldgen/placed_feature', 'data/{ns}/worldgen/placed_features'],
+  // 自定义维度：维度类型 + 维度本身（data/<ns>/dimension_type 与 dimension）
+  dimensionType: ['data/{ns}/dimension_type'],
+  dimension: ['data/{ns}/dimension'],
   advancement: ['data/{ns}/advancement', 'data/{ns}/advancements'],
   itemModel: ['assets/{ns}/models/item', 'assets/{ns}/items'],
   blockState: ['assets/{ns}/blockstates'],
@@ -379,6 +382,7 @@ export function analyzeResources(src, opts = {}) {
   const warnings = [];
   const contents = {
     item: [], block: [], recipe: [], worldgen: [], advancement: [], armorMaterial: [], tier: [],
+    dimension: [],
     // 26.x 数据驱动的附魔与状态效果。跟扩展产出的同名字段并存 ——
     // 扩展管的是 class 里的老版本（Goety 那套），这里管的是 data/ 下的新版。
     enchantment: [], statusEffect: [],
@@ -653,6 +657,26 @@ export function analyzeResources(src, opts = {}) {
         w.ns = ns;
         contents.worldgen.push(w);
       }
+    }
+  }
+
+  // ---- 自定义维度 ----
+  for (const ns of ownNs) {
+    const types = new Map(filesIn(src, DIRS.dimensionType, ns).map((f) => [f.id, f.path]));
+    for (const f of filesIn(src, DIRS.dimension, ns)) {
+      const dim = readJson(src, f.path);
+      if (!dim) continue;
+      const typeJson = types.has(f.id) ? readJson(src, types.get(f.id)) : null;
+      const id = ns === mainNs ? f.id : `${ns}_${f.id}`;
+      contents.dimension.push({
+        id,
+        ns,
+        registryId: `${ns}:${f.id}`,
+        effects: typeJson?.effects || '',
+        generator: dim.generator?.type || '',
+        hasSkylight: typeJson ? !!typeJson.has_skylight : true,
+        ultrawarm: typeJson ? !!typeJson.ultrawarm : false,
+      });
     }
   }
 
