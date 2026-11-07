@@ -140,7 +140,12 @@ const RENDERERS = {
   },
 
   checkbox(field, values, ctx) {
-    const input = el('input', { type: 'checkbox', checked: !!values[field.key] });
+    // 条目里没这个键时听 default 的 —— 否则「默认开启」的开关会显示成关着，
+    // 用户一保存就把 true 覆盖成 false，行为悄悄翻转。
+    const input = el('input', {
+      type: 'checkbox',
+      checked: values[field.key] === undefined ? !!field.default : !!values[field.key],
+    });
     input.addEventListener('change', () => ctx.onChange({ [field.key]: input.checked }));
     return {
       node: el(

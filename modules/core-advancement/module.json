@@ -41,6 +41,14 @@
           "placeholder": "挖到第一颗红宝石"
         },
         {
+          "key": "descriptionEn",
+          "label": "描述（英文）",
+          "type": "textarea",
+          "rows": 2,
+          "hint": "留空就用中文描述",
+          "placeholder": "Mine your first ruby"
+        },
+        {
           "key": "icon",
           "label": "图标物品",
           "type": "ref",

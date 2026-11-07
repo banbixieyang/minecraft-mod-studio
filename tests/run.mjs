@@ -43,6 +43,7 @@ const SUITES = [
   { file: 'ext.mjs' },
   { file: 'ext-base.mjs' },
   { file: 'extensible.mjs' },
+  { file: 'fields.mjs' },
   { file: 'forge.mjs', slow: 'build', buildArgs: ['--build'] },
   { file: 'generality.mjs' },
   { file: 'goety-delight.mjs' },

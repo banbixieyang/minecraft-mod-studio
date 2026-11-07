@@ -32,6 +32,15 @@
             { "value": "netherite", "label": "下界合金级（几乎全能挖）" }
           ]
         },
+        {
+          "key": "level",
+          "label": "挖掘等级（仅 Forge）",
+          "type": "number",
+          "default": 3,
+          "min": 0,
+          "max": 10,
+          "hint": "Forge 1.20.1 的 Tier.getLevel()。Fabric 26.3 没有这个概念，由「采不动的层」决定，这个字段不参与生成"
+        },
         { "key": "repairItems", "label": "维修材料", "type": "list", "hint": "每行一个物品 id，铁砧里用这些东西修工具" }
       ]
     },
@@ -65,6 +74,29 @@
             { "value": "gold", "label": "金" },
             { "value": "diamond", "label": "钻石" },
             { "value": "netherite", "label": "下界合金" }
+          ]
+        },
+        {
+          "key": "texturePalette",
+          "label": "盔甲配色",
+          "type": "select",
+          "default": "",
+          "hint": "决定盔甲层贴图往哪个色相偏。选「自动」就按 id 猜（id 里有 ruby 就是宝石红）",
+          "options": [
+            { "value": "", "label": "自动（按 id 猜）" },
+            { "value": "ruby", "label": "宝石红" },
+            { "value": "crystal", "label": "冷白（晶石）" },
+            { "value": "time", "label": "时之金" },
+            { "value": "undead", "label": "亡灵绿" },
+            { "value": "ender", "label": "末影紫" },
+            { "value": "void", "label": "虚空黑紫" },
+            { "value": "emerald", "label": "翠绿" },
+            { "value": "amber", "label": "琥珀" },
+            { "value": "ice", "label": "冰蓝" },
+            { "value": "blood", "label": "血红" },
+            { "value": "copper", "label": "古铜" },
+            { "value": "shadow", "label": "暗影" },
+            { "value": "stone", "label": "原色（几乎不改）" }
           ]
         },
         { "key": "repairItems", "label": "维修材料", "type": "list", "hint": "每行一个物品 id" }

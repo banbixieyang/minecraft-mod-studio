@@ -216,7 +216,8 @@ function buildLoot(p, b, ns, legacy) {
   const drops = (b.drops || []).filter((d) => d && d.item);
   // 1.20.1 的精准采集条件写法与 26.x 完全不同，先不生成这段条件，
   // 免得产出一份游戏直接报错的战利品表；主掉落和概率池照常有效。
-  const hasSilk = !legacy && (b.kind === 'ore' || b.silkTouch !== false);
+  // 开关默认开（老工程没这个键 → 保持原行为）；矿石也一样，用户想关就关。
+  const hasSilk = !legacy && b.silkTouch !== false;
 
   // 没配掉落物 → 掉自己
   if (!drops.length) {

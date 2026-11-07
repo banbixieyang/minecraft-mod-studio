@@ -49,6 +49,19 @@
         { "key": "lightLevel", "label": "发光等级", "type": "number", "default": 0, "min": 0, "max": 15, "showIf": [{ "field": "kind", "equals": "plain" }] },
         { "key": "requiresTool", "label": "必须用正确工具才能掉落", "type": "checkbox", "default": true },
         {
+          "key": "silkTouch",
+          "label": "精准采集优先掉本体",
+          "type": "checkbox",
+          "default": true,
+          "hint": "勾上：带精准采集时先掉本体，否则走掉落表（1.20.1 不生成这段判断）"
+        },
+        {
+          "key": "tooltip",
+          "label": "说明文本",
+          "type": "list",
+          "hint": "每行一条，鼠标悬停时显示"
+        },
+        {
           "key": "drops",
           "label": "掉落物",
           "type": "drops",
