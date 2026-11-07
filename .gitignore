@@ -43,3 +43,7 @@ Thumbs.db
 # 文件保留在本地，只是不进版本库。
 Goety*.html
 Goety*.md
+
+# 教程截图每次跑都会因为时序产生字节级差异，且没有文档引用 —— 只留在本地
+tests/artifacts/tutorial-manual.png
+tests/artifacts/tutorial-topbar-manual.png
