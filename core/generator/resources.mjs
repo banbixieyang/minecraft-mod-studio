@@ -212,11 +212,109 @@ export function genData(p, adapter) {
   // 游戏建世界时就会自动加载这个维度（无需任何 Java）。要进去用 /goto <id>（见 ModDimensions）。
   for (const d of p.entries.dimension || []) {
     if (!d.id) continue;
-    add(`dimension_type/${d.id}.json`, j(buildDimensionType(d)));
+    add(`dimension_type/${d.id}.json`, j(buildDimensionType(d, legacy)));
     add(`dimension/${d.id}.json`, j(buildDimension(d, ns)));
   }
 
+  // ---- 自定义群系 ----
+  // 群系是纯数据驱动的 worldgen/biome JSON。
+  // 「结构指定群系」由结构 JSON 自己的 biomes 字段负责 —— 1.19 起群系就没有 starts 了，
+  // 两个目标都不写（写了也只是被 codec 忽略）。
+  // 群系可指定维度：留空或 auto 时生成一个「配套测试维度」(单群系世界)，
+  // /execute in <ns>:<biomeId>_world 即可进入；也可填一个维度 id 让它住在那个维度。
+  for (const b of p.entries.biome || []) {
+    if (!b.id) continue;
+    add(`worldgen/biome/${b.id}.json`, j(buildBiome(b, legacy)));
+
+    const dimId = b.dimension && b.dimension !== 'auto' ? String(b.dimension).trim() : `${b.id}_world`;
+    const bid = b.id.includes(':') ? b.id : `${ns}:${b.id}`;
+    add(`dimension_type/${dimId}.json`, j(buildDimensionType({ id: dimId, effects: 'overworld' }, legacy)));
+    add(`dimension/${dimId}.json`, j({
+      type: `${ns}:${dimId}`,
+      generator: {
+        type: 'minecraft:noise',
+        seed: 0,
+        biome_source: { type: 'minecraft:fixed', biome: bid },
+        settings: 'minecraft:overworld',
+      },
+    }));
+  }
+
   return files;
+}
+
+/** #RRGGBB → 0xRRGGBB 整数；解析不出回退默认值 */
+function hexToInt(hex, dflt) {
+  if (!hex) return dflt;
+  let s = String(hex).replace('#', '').trim().toLowerCase();
+  if (s.length === 3) s = s.split('').map((c) => c + c).join('');
+  if (s.length !== 6) return dflt;
+  const n = parseInt(s, 16);
+  return Number.isNaN(n) ? dflt : n;
+}
+
+/** 0xRRGGBB → "#rrggbb"（26.x 的颜色字段与环境属性都用字符串） */
+function hexStr(n) {
+  return `#${(n >>> 0).toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * 生物群系本体（worldgen/biome/<id>.json）。
+ *
+ * 两个版本的格式已经分道扬镳：
+ *   1.20.1 → precipitation 字符串 + effects 里的整数颜色（天空/雾/水/水雾）
+ *   26.3   → has_precipitation 布尔 + effects 里的 "#rrggbb" 字符串，
+ *            天空色/雾色/水雾色搬到了 attributes 的 minecraft:visual/*。
+ * 写错格式在游戏里是「数据包加载失败」，所以这里按 legacy 严格分派。
+ */
+function buildBiome(e, legacy) {
+  const precip = e.precipitation || 'rain';
+  // 老工程可能存着 icy；两个版本的枚举值其实都叫 frozen
+  const rawTempMod = e.temperature_modifier || 'none';
+  const tempMod = rawTempMod === 'icy' ? 'frozen' : rawTempMod;
+  const gcm = e.grass_color_modifier || 'none';
+  const sky = hexToInt(e.sky_color, 0x84e4ff);
+  const fog = hexToInt(e.fog_color, 0xc0d8ff);
+  const water = hexToInt(e.water_color, 0x3f76e4);
+  const waterFog = hexToInt(e.water_fog_color, 0x050533);
+  const foliage = hexToInt(e.foliage_color, NaN);
+  const grass = hexToInt(e.grass_color, NaN);
+
+  if (legacy) {
+    const biome = {
+      precipitation: precip,
+      temperature: num(e.temperature, 0.5),
+      downfall: num(e.downfall, 0.5),
+      effects: {
+        sky_color: sky,
+        fog_color: fog,
+        water_color: water,
+        water_fog_color: waterFog,
+      },
+    };
+    if (tempMod !== 'none') biome.temperature_modifier = tempMod;
+    if (!Number.isNaN(foliage)) biome.effects.foliage_color = foliage;
+    if (!Number.isNaN(grass)) biome.effects.grass_color = grass;
+    if (gcm !== 'none') biome.effects.grass_color_modifier = gcm;
+    return biome;
+  }
+
+  const biome = {
+    has_precipitation: precip !== 'none',
+    temperature: num(e.temperature, 0.5),
+    downfall: num(e.downfall, 0.5),
+    effects: { water_color: hexStr(water) },
+    attributes: {
+      'minecraft:visual/sky_color': hexStr(sky),
+      'minecraft:visual/fog_color': hexStr(fog),
+      'minecraft:visual/water_fog_color': hexStr(waterFog),
+    },
+  };
+  if (tempMod !== 'none') biome.temperature_modifier = tempMod;
+  if (!Number.isNaN(foliage)) biome.effects.foliage_color = hexStr(foliage);
+  if (!Number.isNaN(grass)) biome.effects.grass_color = hexStr(grass);
+  if (gcm !== 'none') biome.effects.grass_color_modifier = gcm;
+  return biome;
 }
 
 // ---------- 战利品表 ----------
@@ -563,36 +661,138 @@ function biomeId(d, ns) {
 }
 
 /**
- * 维度类型（dimension_type/<id>.json）。
- * effects 决定天空/雾/环境光这套观感，也决定「烧不烧」用的方块标签（infiniburn）。
+ * 26.3 三种「原版观感」的预设。
+ * 26.3 把观感（visual/*）和玩法规则（gameplay/*）从平铺字段搬进了 attributes，
+ * 所以这里直接照抄原版 overworld / the_nether / the_end 的取值当底子，
+ * 再用界面上那几个开关覆盖掉 gameplay 部分。
  */
-function buildDimensionType(d) {
+const DIM_PRESETS = {
+  overworld: {
+    skybox: 'overworld',
+    timelines: '#minecraft:in_overworld',
+    defaultClock: 'minecraft:overworld',
+    attributes: {
+      'minecraft:visual/sky_color': '#78a7ff',
+      'minecraft:visual/fog_color': '#c0d8ff',
+      'minecraft:visual/ambient_light_color': '#0a0a0a',
+      'minecraft:visual/cloud_color': '#ccffffff',
+      'minecraft:visual/cloud_height': 192.33,
+      'minecraft:gameplay/nether_portal_spawns_piglin': true,
+    },
+  },
+  nether: {
+    skybox: 'none',
+    timelines: '#minecraft:in_nether',
+    defaultClock: null,
+    attributes: {
+      'minecraft:visual/ambient_light_color': '#302821',
+      'minecraft:visual/sky_light_color': '#7a7aff',
+      'minecraft:visual/sky_light_factor': 0,
+      'minecraft:visual/fog_start_distance': 10,
+      'minecraft:visual/fog_end_distance': 96,
+      'minecraft:gameplay/sky_light_level': 4,
+      'minecraft:gameplay/snow_golem_melts': true,
+    },
+  },
+  end: {
+    skybox: 'end',
+    timelines: '#minecraft:in_end',
+    defaultClock: 'minecraft:the_end',
+    attributes: {
+      'minecraft:visual/sky_color': '#000000',
+      'minecraft:visual/fog_color': '#181318',
+      'minecraft:visual/ambient_light_color': '#3f473f',
+      'minecraft:visual/sky_light_color': '#ac60cd',
+      'minecraft:visual/sky_light_factor': 0,
+    },
+  },
+};
+
+/**
+ * 维度类型（dimension_type/<id>.json）。
+ *
+ * 两个版本的 schema 已经完全不是一回事：
+ *   1.20.1 → effects + bed_works / natural / piglin_safe / ultrawarm / has_raids
+ *            这些平铺开关，固定时刻用 fixed_time 数值。
+ *   26.3   → effects / bed_works / natural / piglin_safe / ultrawarm / has_raids
+ *            全部删除：观感与玩法规则搬进 attributes（minecraft:visual/*、
+ *            minecraft:gameplay/*），天空盒是 skybox 枚举，昼夜轴是 timelines
+ *            标签，固定时刻退化成一个 has_fixed_time 布尔。
+ * 写错格式在游戏里是「数据包加载失败」，所以这里按 legacy 严格分派。
+ */
+function buildDimensionType(d, legacy) {
   const eff = d.effects || 'overworld';
-  const effId = eff === 'nether' ? 'minecraft:nether' : eff === 'end' ? 'minecraft:the_end' : 'minecraft:overworld';
-  const infiniburn = `#minecraft:infiniburn_${eff === 'nether' ? 'nether' : eff === 'end' ? 'end' : 'overworld'}`;
+  const effKey = eff === 'nether' ? 'nether' : eff === 'end' ? 'end' : 'overworld';
+  const infiniburn = `#minecraft:infiniburn_${effKey}`;
   // 默认勾选的开关用「!== false」：条目里没写（导入工程 / 没碰过表单）时按 true 处理，
   // 显式取消勾选存的是 false，会被正确识别为 false。默认不勾的才用 !!。
+  const minY = clampInt(d.minY, -64, -2032, 2031);
+  const height = clampInt(d.height, 384, 16, 4096);
+  const logicalHeight = Math.min(height, clampInt(d.logicalHeight, 384, 16, 4096));
+  const ft = Math.round(num(d.fixedTime, -1));
+
+  if (legacy) {
+    const type = {
+      ambient_light: num(d.ambientLight, 0),
+      bed_works: d.bedWorks !== false,
+      coordinate_scale: num(d.coordinateScale, 1),
+      effects: effKey === 'nether' ? 'minecraft:nether' : effKey === 'end' ? 'minecraft:the_end' : 'minecraft:overworld',
+      has_ceiling: !!d.hasCeiling,
+      has_raids: d.hasRaids !== false,
+      has_skylight: d.hasSkylight !== false,
+      infiniburn,
+      logical_height: logicalHeight,
+      min_y: minY,
+      height,
+      monster_spawn_block_light_limit: clampInt(d.monsterSpawnBlockLightLimit, 0, 0, 15),
+      monster_spawn_light_level: clampInt(d.monsterSpawnLightLevel, 0, 0, 15),
+      piglin_safe: !!d.piglinSafe,
+      respawn_anchor_works: !!d.respawnAnchorWorks,
+      ultrawarm: !!d.ultrawarm,
+      natural: d.natural !== false,
+    };
+    if (ft >= 0) type.fixed_time = ft;
+    return type;
+  }
+
+  const preset = DIM_PRESETS[effKey];
+  const bedWorks = d.bedWorks !== false;
+  const ultrawarm = !!d.ultrawarm;
+  const attrs = {
+    ...preset.attributes,
+    // 平铺开关在 26.3 的落点：一一对应，只有 natural 没有对应项
+    // （26.3 用 has_fixed_time / default_clock / timelines 的组合替代它）。
+    'minecraft:gameplay/bed_rule': bedWorks
+      ? { can_set_spawn: 'always', can_sleep: 'when_dark' }
+      : { can_set_spawn: 'never', can_sleep: 'never', destroy_on_use: true },
+    'minecraft:gameplay/can_start_raid': d.hasRaids !== false,
+    'minecraft:gameplay/respawn_anchor_works': !!d.respawnAnchorWorks,
+    // piglin_safe 的语义正好相反：安全 = 不会僵尸化
+    'minecraft:gameplay/piglins_zombify': !d.piglinSafe,
+    'minecraft:gameplay/water_evaporates': ultrawarm,
+    'minecraft:gameplay/fast_lava': ultrawarm,
+  };
+
   const type = {
     ambient_light: num(d.ambientLight, 0),
-    bed_works: d.bedWorks !== false,
+    attributes: attrs,
     coordinate_scale: num(d.coordinateScale, 1),
-    effects: effId,
     has_ceiling: !!d.hasCeiling,
-    has_raids: d.hasRaids !== false,
+    has_ender_dragon_fight: effKey === 'end',
+    has_fixed_time: ft >= 0,
     has_skylight: d.hasSkylight !== false,
+    height,
     infiniburn,
-    logical_height: clampInt(d.logicalHeight, 384, 16, 4096),
-    min_y: clampInt(d.minY, -64, -2032, 2031),
-    height: clampInt(d.height, 384, 16, 4096),
+    logical_height: logicalHeight,
+    min_y: minY,
     monster_spawn_block_light_limit: clampInt(d.monsterSpawnBlockLightLimit, 0, 0, 15),
+    // 26.3 这里是 IntProvider：纯数字 = 恒定等级，也接受 {type:"minecraft:uniform",...}
     monster_spawn_light_level: clampInt(d.monsterSpawnLightLevel, 0, 0, 15),
-    piglin_safe: !!d.piglinSafe,
-    respawn_anchor_works: !!d.respawnAnchorWorks,
-    ultrawarm: !!d.ultrawarm,
-    natural: d.natural !== false,
+    skybox: preset.skybox,
+    timelines: preset.timelines,
   };
-  const ft = Math.round(num(d.fixedTime, -1));
-  if (ft >= 0) type.fixed_time = ft;
+  if (effKey === 'nether') type.cardinal_light = 'nether';
+  if (preset.defaultClock) type.default_clock = preset.defaultClock;
   return type;
 }
 

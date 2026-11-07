@@ -219,6 +219,110 @@
           "showIf": [{ "field": "generator", "equals": "flat" }]
         }
       ]
+    },
+    {
+      "id": "biome",
+      "label": "生物群系",
+      "singular": "群系",
+      "group": "世界",
+      "icon": "🌿",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 crystal_forest" },
+        {
+          "key": "precipitation",
+          "label": "降水",
+          "type": "select",
+          "default": "rain",
+          "options": [
+            { "value": "none", "label": "无" },
+            { "value": "rain", "label": "雨" },
+            { "value": "snow", "label": "雪" }
+          ]
+        },
+        { "key": "temperature", "label": "温度", "type": "number", "default": 0.5, "min": -2, "max": 2, "step": 0.1 },
+        {
+          "key": "temperature_modifier",
+          "label": "温度修正",
+          "type": "select",
+          "default": "none",
+          "options": [
+            { "value": "none", "label": "无" },
+            { "value": "icy", "label": "冰封（像雪山）" }
+          ]
+        },
+        { "key": "downfall", "label": "潮湿（降雨频率）", "type": "number", "default": 0.5, "min": 0, "max": 1, "step": 0.1 },
+        { "key": "sky_color", "label": "天空色", "type": "text", "default": "#84E4FF", "placeholder": "#RRGGBB" },
+        { "key": "fog_color", "label": "雾色", "type": "text", "default": "#C0D8FF", "placeholder": "#RRGGBB" },
+        { "key": "water_color", "label": "水色", "type": "text", "default": "#3F76E4", "placeholder": "#RRGGBB" },
+        { "key": "water_fog_color", "label": "水雾色", "type": "text", "default": "#050533", "placeholder": "#RRGGBB" },
+        { "key": "foliage_color", "label": "树叶色（留空用默认）", "type": "text", "default": "", "placeholder": "#RRGGBB" },
+        { "key": "grass_color", "label": "草色（留空用默认）", "type": "text", "default": "", "placeholder": "#RRGGBB" },
+        {
+          "key": "grass_color_modifier",
+          "label": "草色修正",
+          "type": "select",
+          "default": "none",
+          "options": [
+            { "value": "none", "label": "无" },
+            { "value": "dark_forest", "label": "深暗森林" },
+            { "value": "swamp", "label": "沼泽" }
+          ]
+        },
+        { "key": "dimension", "label": "所在维度", "type": "text", "default": "", "hint": "留空 = 生成配套测试维度（/execute in <id>:<biomeId>_world 进入）；也可填一个维度 id 让它住进那个维度" }
+      ]
+    },
+    {
+      "id": "structure",
+      "label": "结构",
+      "singular": "结构",
+      "group": "世界",
+      "icon": "🏛️",
+      "generate": "./generate.mjs",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 crystal_tower" },
+        {
+          "key": "biomes",
+          "label": "生成群系",
+          "type": "list",
+          "hint": "每行一个群系 id（如 crystal_forest）。填 all 表示所有本模组群系。结构生成在哪些群系由这里决定"
+        },
+        {
+          "key": "step",
+          "label": "生成阶段",
+          "type": "select",
+          "default": "surface_structures",
+          "options": [
+            { "value": "surface_structures", "label": "地表结构" },
+            { "value": "underground_structures", "label": "地下结构" },
+            { "value": "strongholds", "label": "要塞" },
+            { "value": "top_layer_modification", "label": "顶层修饰" }
+          ]
+        },
+        {
+          "key": "terrain_adaptation",
+          "label": "地形修饰",
+          "type": "select",
+          "default": "none",
+          "options": [
+            { "value": "none", "label": "不修饰" },
+            { "value": "beard_thin", "label": "薄胡子（顺着地表堆土）" },
+            { "value": "beard_box", "label": "厚胡子（方形堆土）" },
+            { "value": "bury", "label": "埋入地下" },
+            { "value": "encapsulate", "label": "包裹（洞穴内）" }
+          ]
+        },
+        { "key": "spacing", "label": "间距（区块）", "type": "number", "default": 32, "min": 1, "max": 512, "hint": "每 N×N 区块尝试生成一次，越大越稀疏" },
+        { "key": "separation", "label": "最小间隔（区块）", "type": "number", "default": 8, "min": 0, "max": 512 },
+        { "key": "salt", "label": "随机盐", "type": "number", "default": 0, "min": 0, "max": 2147483647, "hint": "换一个数就换一套随机分布" },
+        { "key": "block", "label": "主体方块", "type": "text", "required": true, "default": "minecraft:stone_bricks", "placeholder": "minecraft:stone_bricks" },
+        { "key": "accentBlock", "label": "点缀方块（留空不用）", "type": "text", "default": "", "placeholder": "minecraft:glowstone" },
+        { "key": "accentChance", "label": "点缀概率", "type": "number", "default": 0.15, "min": 0, "max": 1, "step": 0.05 },
+        { "key": "width", "label": "宽度（方块）", "type": "number", "default": 9, "min": 3, "max": 63, "hint": "X/Z 方向的占地面积，会自动取奇数好居中" },
+        { "key": "height", "label": "高度（方块）", "type": "number", "default": 12, "min": 3, "max": 128 },
+        { "key": "hollow", "label": "空心（内部挖空）", "type": "checkbox", "default": true },
+        { "key": "floorBlock", "label": "地板方块（留空同主体）", "type": "text", "default": "", "placeholder": "minecraft:polished_andesite" },
+        { "key": "lootTable", "label": "宝箱战利品表（留空不放）", "type": "text", "default": "", "hint": "在结构中心放一个箱子。填战利品表 id（配合「战利品」内容类型），也可填 minecraft:chests/simple_dungeon" }
+      ]
     }
   ]
 }

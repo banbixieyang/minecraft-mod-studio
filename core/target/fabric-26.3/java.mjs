@@ -53,6 +53,11 @@ export function genMainClass(p) {
       .some((e) => (e.visualPrograms || []).some(isServerProg)));
   const worldgenImport = hasWorldgen ? `import ${pkg}.world.ModWorldGen;\n` : '';
   const worldgenCall = hasWorldgen ? '        ModWorldGen.init();\n' : '';
+  // 结构类型 / 拼块类型必须在数据包加载前注册，所以在主入口调一次。
+  // （Forge 那边不用改主类：ModStructures 自己挂了 @Mod.EventBusSubscriber。）
+  const hasStructures = (p.entries?.structure || []).length > 0;
+  const structureImport = hasStructures ? `import ${pkg}.world.ModStructures;\n` : '';
+  const structureCall = hasStructures ? '        ModStructures.init();\n' : '';
   // 有服务端积木程序时，把接线挂进 onInitialize
   const visualImport = hasVisual ? `import ${pkg}.custom.ModLogic;\n` : '';
   const visualCall = hasVisual ? '        ModLogic.init();\n' : '';
@@ -63,7 +68,7 @@ ${hasBlocks ? `import ${pkg}.registry.ModBlocks;\n` : ''}import ${pkg}.registry.
 import ${pkg}.registry.ModTabs;
 import ${pkg}.registry.ModTiers;
 import ${pkg}.custom.CustomContent;
-${visualImport}${worldgenImport}import net.fabricmc.api.ModInitializer;
+${visualImport}${worldgenImport}${structureImport}import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,7 +93,7 @@ public class ${cls} implements ModInitializer {
         ModArmorMaterials.init();
 ${hasBlocks ? '        ModBlocks.init();\n' : ''}        ModItems.init();
         ModTabs.init();
-${worldgenCall}${visualCall}        CustomContent.init();
+${worldgenCall}${structureCall}${visualCall}        CustomContent.init();
         // @hook:init
         LOGGER.info("[${p.meta.id}] 已加载 {} 个物品${hasBlocks ? ' / {} 个方块' : ''}",
                 ModItems.all().size()${hasBlocks ? ', ModBlocks.all().size()' : ''});
