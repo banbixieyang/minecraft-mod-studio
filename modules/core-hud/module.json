@@ -1,0 +1,83 @@
+{
+  "id": "core-hud",
+  "name": "自定义界面",
+  "version": "1.0.0",
+  "order": 70,
+  "author": "MC Studio",
+  "description": "像小地图 mod 那样的可调 HUD 叠层：在游戏里显示变量，配置文件 + 切换键控制显示，改了即时生效",
+  "contentTypes": [
+    {
+      "id": "hud",
+      "label": "HUD 面板",
+      "singular": "HUD 面板",
+      "group": "进阶",
+      "icon": "▤",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 status_panel。会用作配置文件的文件名" },
+        { "key": "title", "label": "面板标题", "type": "text", "default": "状态面板", "placeholder": "我的状态" },
+        {
+          "key": "anchor",
+          "label": "停靠位置",
+          "type": "select",
+          "default": "top_left",
+          "options": [
+            { "value": "top_left", "label": "左上" },
+            { "value": "top_right", "label": "右上" },
+            { "value": "bottom_left", "label": "左下" },
+            { "value": "bottom_right", "label": "右下" }
+          ]
+        },
+        { "key": "offsetX", "label": "水平偏移（像素）", "type": "number", "default": 8, "min": 0, "max": 2000 },
+        { "key": "offsetY", "label": "垂直偏移（像素）", "type": "number", "default": 8, "min": 0, "max": 2000 },
+        { "key": "scale", "label": "行高倍率", "type": "number", "default": 1, "min": 0.5, "max": 3, "step": 0.1, "hint": "放大面板里每一行的间距，不改字号" },
+        { "key": "visible", "label": "默认显示", "type": "checkbox", "default": true, "hint": "关掉后用切换键手动开" },
+        { "key": "bgColor", "label": "背景色（#RRGGBBAA）", "type": "text", "default": "#000000AA", "placeholder": "#000000AA" },
+        { "key": "textColor", "label": "文字色（#RRGGBBAA）", "type": "text", "default": "#FFFFFFFF", "placeholder": "#FFFFFFFF" },
+        { "key": "lineSpacing", "label": "行间距（像素）", "type": "number", "default": 14, "min": 8, "max": 40 },
+        {
+          "key": "vars",
+          "label": "要显示的变量",
+          "type": "multiselect",
+          "default": ["health", "max_health", "pos_x", "pos_y", "pos_z"],
+          "options": [
+            { "value": "health", "label": "当前生命值" },
+            { "value": "max_health", "label": "最大生命值" },
+            { "value": "pos_x", "label": "X 坐标" },
+            { "value": "pos_y", "label": "Y 坐标" },
+            { "value": "pos_z", "label": "Z 坐标" },
+            { "value": "game_mode", "label": "游戏模式" }
+          ]
+        },
+        {
+          "key": "toggleKey",
+          "label": "切换显示按键",
+          "type": "select",
+          "default": "KEY_H",
+          "options": [
+            { "value": "KEY_A", "label": "A" }, { "value": "KEY_B", "label": "B" }, { "value": "KEY_C", "label": "C" },
+            { "value": "KEY_D", "label": "D" }, { "value": "KEY_E", "label": "E" }, { "value": "KEY_F", "label": "F" },
+            { "value": "KEY_G", "label": "G" }, { "value": "KEY_H", "label": "H" }, { "value": "KEY_I", "label": "I" },
+            { "value": "KEY_J", "label": "J" }, { "value": "KEY_K", "label": "K" }, { "value": "KEY_L", "label": "L" },
+            { "value": "KEY_M", "label": "M" }, { "value": "KEY_N", "label": "N" }, { "value": "KEY_O", "label": "O" },
+            { "value": "KEY_P", "label": "P" }, { "value": "KEY_Q", "label": "Q" }, { "value": "KEY_R", "label": "R" },
+            { "value": "KEY_S", "label": "S" }, { "value": "KEY_T", "label": "T" }, { "value": "KEY_U", "label": "U" },
+            { "value": "KEY_V", "label": "V" }, { "value": "KEY_W", "label": "W" }, { "value": "KEY_X", "label": "X" },
+            { "value": "KEY_Y", "label": "Y" }, { "value": "KEY_Z", "label": "Z" },
+            { "value": "KEY_0", "label": "0" }, { "value": "KEY_1", "label": "1" }, { "value": "KEY_2", "label": "2" },
+            { "value": "KEY_3", "label": "3" }, { "value": "KEY_4", "label": "4" }, { "value": "KEY_5", "label": "5" },
+            { "value": "KEY_6", "label": "6" }, { "value": "KEY_7", "label": "7" }, { "value": "KEY_8", "label": "8" },
+            { "value": "KEY_9", "label": "9" },
+            { "value": "KEY_F1", "label": "F1" }, { "value": "KEY_F2", "label": "F2" }, { "value": "KEY_F3", "label": "F3" },
+            { "value": "KEY_F4", "label": "F4" }, { "value": "KEY_F5", "label": "F5" }, { "value": "KEY_F6", "label": "F6" },
+            { "value": "KEY_F7", "label": "F7" }, { "value": "KEY_F8", "label": "F8" }, { "value": "KEY_F9", "label": "F9" },
+            { "value": "KEY_F10", "label": "F10" }, { "value": "KEY_F11", "label": "F11" }, { "value": "KEY_F12", "label": "F12" },
+            { "value": "KEY_SPACE", "label": "空格" },
+            { "value": "KEY_TAB", "label": "Tab" },
+            { "value": "KEY_GRAVE", "label": "~ / `" }
+          ]
+        }
+      ],
+      "generate": "./generate.mjs"
+    }
+  ]
+}

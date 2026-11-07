@@ -59,6 +59,10 @@ function sampleValue(f, ct) {
     case 'textarea':
     case 'text': return 'probe';
     case 'id': return `probe_${ct.id}`;
+    case 'multiselect': {
+      const o = (f.options || []).slice(0, 2).map((x) => (typeof x === 'string' ? x : x.value));
+      return o.length ? o : ['probe'];
+    }
     default: return 'probe';
   }
 }

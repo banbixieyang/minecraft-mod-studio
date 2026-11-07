@@ -8,7 +8,7 @@ import { el, setChildren, debounce } from './ui.js';
 import { renderTexturePicker } from './texture_picker.js';
 
 /** 需要占满整行的字段类型 */
-const FULL_WIDTH = new Set(['textarea', 'list', 'drops', 'grid9', 'texture', 'tags', 'group']);
+const FULL_WIDTH = new Set(['textarea', 'list', 'drops', 'grid9', 'texture', 'tags', 'group', 'multiselect']);
 
 /**
  * 渲染一组字段。
@@ -304,6 +304,27 @@ const RENDERERS = {
     const node = el('div');
     renderTexturePicker(node, values, field, ctx);
     return { node: el('div', {}, label(field), node) };
+  },
+
+  /** 多选：一组带标签的勾选框，值是选中值的数组 */
+  multiselect(field, values, ctx) {
+    const opts = field.options || [];
+    const cur = Array.isArray(values[field.key]) ? values[field.key] : [];
+    const host = el('div.multiselect');
+    const boxes = [];
+    const sync = () => {
+      const sel = boxes.filter((b) => b.checked).map((b) => b.value);
+      ctx.onChange({ [field.key]: sel });
+    };
+    for (const o of opts) {
+      const val = typeof o === 'string' ? o : o.value;
+      const lbl = typeof o === 'string' ? o : (o.label || o.value);
+      const cb = el('input', { type: 'checkbox', value: val, checked: cur.includes(val) });
+      cb.addEventListener('change', sync);
+      boxes.push(cb);
+      host.append(el('label.check-pill', {}, cb, el('span', { text: lbl })));
+    }
+    return { node: el('div', {}, label(field), host) };
   },
 };
 

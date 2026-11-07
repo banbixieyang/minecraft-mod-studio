@@ -46,6 +46,7 @@ const SUITES = [
   { file: 'extensible.mjs' },
   { file: 'fields.mjs' },
   { file: 'forge.mjs', slow: 'build', buildArgs: ['--build'] },
+  { file: 'hud.mjs' },
   { file: 'generality.mjs' },
   { file: 'goety-delight.mjs' },
   { file: 'goety-override.mjs', slow: 'build', buildArgs: ['--build'] },

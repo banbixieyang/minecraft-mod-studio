@@ -136,7 +136,7 @@ export function blankEntry(ct, id) {
   const e = { id };
   for (const f of ct.fields || []) {
     if (f.key === 'id') continue;
-    e[f.key] = f.default !== undefined ? f.default : f.type === 'checkbox' ? false : f.type === 'number' ? (f.min ?? 0) : '';
+    e[f.key] = f.default !== undefined ? f.default : f.type === 'checkbox' ? false : f.type === 'number' ? (f.min ?? 0) : f.type === 'multiselect' ? [] : '';
   }
   return e;
 }

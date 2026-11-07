@@ -165,10 +165,14 @@ ${opts.clientModsDir ? `\nclient_mods_dir=${opts.clientModsDir}\n` : ''}`,
           license: p.meta.license || 'MIT',
           icon: `assets/${id}/icon.png`,
           environment: '*',
-          // 有「按下按键」事件时，额外注册客户端入口 —— 按键绑定只在客户端存在。
-          entrypoints: (p.visual?.programs || []).some((x) => x && x.op === 'event.key_pressed')
-            ? { main: [`${pkg}.${cls}`], client: [`${pkg}.client.ModClient`] }
-            : { main: [`${pkg}.${cls}`] },
+          // 有「按下按键」事件或「HUD 面板」时，额外注册客户端入口：
+          // 按键绑定只在客户端存在；HUD 渲染 / 配置文件也在客户端。
+          entrypoints: (() => {
+            const client = [];
+            if ((p.visual?.programs || []).some((x) => x && x.op === 'event.key_pressed')) client.push(`${pkg}.client.ModClient`);
+            if ((p.entries?.hud || []).length) client.push(`${pkg}.client.ModHud`);
+            return client.length ? { main: [`${pkg}.${cls}`], client } : { main: [`${pkg}.${cls}`] };
+          })(),
           mixins: [`${id}.mixins.json`],
           depends: {
             fabricloader: `>=${t.loaderVersion}`,

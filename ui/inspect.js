@@ -426,6 +426,13 @@ function fieldPreview(type, e) {
     }
     case 'brewEffect': return e.numbers?.length ? `内置数值：${e.numbers.slice(0, 6).join(', ')}` : '';
     case 'enchantment': return e.descriptionZh || '';
+    case 'hud': {
+      const vs = Array.isArray(e.vars) ? e.vars : [];
+      const vfield = (fieldsFor(type) || []).find((f) => f.key === 'vars');
+      const labelOf = (v) => (vfield?.options || []).find((o) => (o.value || o) === v)?.label || v;
+      const names = vs.map(labelOf).join('、');
+      return `显示：${names || '（未选）'} · 锚点 ${e.anchor || 'top_left'} · 切换键 ${e.toggleKey || 'KEY_H'}`;
+    }
     default: return '';
   }
 }

@@ -614,6 +614,7 @@ async function updatePreview() {
 }
 
 function renderInspector(host, type, entry, values) {
+  if (type.id === 'hud') { renderHudInspector(host, type, entry, values); return; }
   const img = el('img.inspector-icon', { alt: '预览' });
   const meta = el('div.inspector-meta');
 
@@ -651,6 +652,47 @@ function renderInspector(host, type, entry, values) {
 
   setChildren(host, el('div.inspector-inner', {}, el('div.inspector-preview', {}, img), meta, actions));
   refresh();
+}
+
+/**
+ * HUD 面板的编辑器内预览：画一块「游戏画面」，把面板按配置停靠到角落，
+ * 列出选中的变量（值用「—」占位，真值进游戏才会变）。让用户不进游戏也能看版式。
+ */
+function renderHudInspector(host, type, entry, values) {
+  const vfield = (type.fields || []).find((f) => f.key === 'vars');
+  const labelOf = (v) => (vfield?.options || []).find((o) => (o.value || o) === v)?.label || v;
+  const vars = Array.isArray(values.vars) ? values.vars : [];
+  const title = values.title || '(未命名面板)';
+  const anchor = values.anchor || 'top_left';
+
+  const pos = [];
+  if (anchor.includes('right')) pos.push('right:8px;'); else pos.push('left:8px;');
+  if (anchor.includes('bottom')) pos.push('bottom:8px;'); else pos.push('top:8px;');
+  const panel = el('div', {
+    style: `position:absolute;${pos.join('')}min-width:150px;background:rgba(0,0,0,0.62);color:#fff;padding:6px 8px;font:12px/1.5 ui-monospace,monospace;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.4);`,
+  },
+    el('div', { style: 'font-weight:bold;margin-bottom:2px;', text: title }),
+    ...(vars.length
+      ? vars.map((v) => el('div', { text: `${labelOf(v)}：—` }))
+      : [el('div', { style: 'opacity:.6', text: '（未选择要显示的变量）' })]),
+  );
+  const screen = el('div', {
+    style: 'position:relative;height:184px;background:linear-gradient(#7ec0ee,#bfe6ff);border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;',
+  },
+    panel,
+    el('div', { style: 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#235;opacity:.45;font:11px sans-serif', text: '（游戏画面示意）' }),
+  );
+
+  const meta = el('div.inspector-meta',
+    {},
+    el('div.kv', {}, el('span.k', { text: '标识符' }), el('code', { text: entry.id })),
+    el('div.kv', {}, el('span.k', { text: '类型' }), el('span', { text: type.label })),
+    el('div.kv', {}, el('span.k', { text: '切换键' }), el('span', { text: values.toggleKey || 'KEY_H' })),
+    el('div.kv', {}, el('span.k', { text: '配置文件' }), el('code', { text: `config/${state.project.meta.id}/hud/${entry.id}.properties` })),
+  );
+
+  setChildren(host, el('div.inspector-inner', {}, el('div.inspector-preview', {}, screen), meta,
+    el('div.inspector-actions', {}, el('button.btn.small.ghost', { onclick: () => renderHudInspector(host, type, entry, values) }, '刷新预览'))));
 }
 
 // ============================================================
