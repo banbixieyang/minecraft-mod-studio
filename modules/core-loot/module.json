@@ -1,0 +1,39 @@
+{
+  "id": "core-loot",
+  "name": "战利品",
+  "version": "1.0.0",
+  "order": 50,
+  "author": "MC Studio",
+  "description": "宝箱、实体、钓鱼等战利品表（纯数据驱动）",
+  "contentTypes": [
+    {
+      "id": "loot_table",
+      "label": "宝箱/战利品",
+      "singular": "战利品表",
+      "group": "内容",
+      "icon": "📦",
+      "generate": "./generate.mjs",
+      "fields": [
+        { "key": "id", "label": "标识符", "type": "id", "required": true, "hint": "如 diamond_chest" },
+        {
+          "key": "type",
+          "label": "触发类型",
+          "type": "select",
+          "default": "minecraft:chest",
+          "options": [
+            { "value": "minecraft:chest", "label": "宝箱（开箱掉落）" },
+            { "value": "minecraft:block", "label": "方块破坏" },
+            { "value": "minecraft:entity", "label": "实体死亡" },
+            { "value": "minecraft:fishing", "label": "钓鱼" },
+            { "value": "minecraft:empty", "label": "空（不掉落）" }
+          ]
+        },
+        { "key": "items", "label": "物品（每行一个 id）", "type": "list", "hint": "如 minecraft:diamond 或 ruby_gem；留空则不掉落" },
+        { "key": "countMin", "label": "数量下限", "type": "number", "default": 1, "min": 1, "max": 64 },
+        { "key": "countMax", "label": "数量上限", "type": "number", "default": 1, "min": 1, "max": 64 },
+        { "key": "weight", "label": "权重", "type": "number", "default": 1, "min": 1, "max": 100, "hint": "多个物品时，数值越大越常出现" },
+        { "key": "enchant", "label": "随机附魔", "type": "checkbox", "default": false }
+      ]
+    }
+  ]
+}
