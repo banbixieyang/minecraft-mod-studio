@@ -32,6 +32,8 @@ const state = {
   vanilla: null,
   activeType: null,
   activeId: null,
+  /** 积木面板的作用域：null = 工程全局；{ type:'item'|'block', id } = 某个条目的专属程序 */
+  visualScope: null,
   buildPoll: null,
   // 'edit' | 'library' | 'analyze'
   view: 'edit',
@@ -295,14 +297,24 @@ function renderWorkspace() {
       root: state.root,
       project: state.project,
       types: state.types,
+      visualScope: state.visualScope,
       onBack: () => {
         state.view = 'edit';
+        state.visualScope = null;
         // 没工程可回就回首页，别把用户扔到一个空的编辑区里。
         if (!state.project) {
           renderWelcome();
           return;
         }
-        renderWorkspace();
+        // 重新拉一次工程：把刚才在积木面板里保存的条目程序数同步进来，
+        // 但保留当前选中的类型/条目，别把用户弹回第一个条目。
+        api.openProject(state.root).then((r) => {
+          state.project = r.project;
+          state.types = r.types;
+          state.typeMap = Object.fromEntries(r.types.map((t) => [t.id, t]));
+          refreshRefs();
+          renderWorkspace();
+        }).catch(() => renderWorkspace());
       },
       onChanged: () => openProject(state.root),
       /** 从任何地方把问题甩给 AI */
@@ -345,6 +357,9 @@ function renderWorkspace() {
 }
 
 function goView(view) {
+  // 从顶栏进积木面板是「工程全局」模式；条目级要从条目编辑器里点进去
+  // （那个入口会自己设置 state.visualScope），所以这里一律清掉作用域。
+  if (view === 'visual') state.visualScope = null;
   state.view = view;
   renderWorkspace();
 }
@@ -556,8 +571,38 @@ function renderEditor(editorHost, inspector) {
 
   editorHost.append(toolbar, el('div.editor-scroll', {}, form));
 
+  // 物品 / 方块可以各挂一套专属积木程序（per-entry 绑定）：
+  // 事件只对该条目触发，编译期还会按条目类型校验事件是否合法。
+  if (type.id === 'item' || type.id === 'block') {
+    editorHost.append(renderEntryVisualSection(type, entry));
+  }
+
   // ---- 右侧预览 ----
   renderInspector(inspector, type, entry, values);
+}
+
+/**
+ * 条目编辑器里的「积木效果」区块（仅 item/block）。
+ * 点按钮进积木面板，作用域锁定到当前条目；标签上顺带显示已挂了几段程序。
+ */
+function renderEntryVisualSection(type, entry) {
+  const noun = type.label || '条目';
+  const count = entry.visualPrograms?.length || 0;
+  const sec = el('div.entry-visual-section',
+    {},
+    el('div.section-head', {},
+      el('h3', { text: '积木效果' }),
+      el('span.muted.small', { text: '用积木给本条目写专属逻辑，事件只对该条目触发' }),
+    ),
+    el('button.btn.small', {
+      onclick: () => {
+        state.visualScope = { type: type.id, id: entry.id };
+        state.view = 'visual';
+        renderWorkspace();
+      },
+    }, count ? `编辑本${noun}的积木程序（${count}）` : `用积木写本${noun}的效果`),
+  );
+  return sec;
 }
 
 async function updatePreview() {

@@ -144,6 +144,23 @@ export async function handleVisual(req, res, route, q, method) {
           errors: r.errors,
         });
       }
+      // 条目级编译预览：带上 owner（{ type, id }），让编译期守卫
+      // OWNER_EVENT_RULES 生效 —— 比如方块挂 item_use 会直接报「方块不能拥有该事件」。
+      if (body.owner && Array.isArray(body.programs)) {
+        const owner = body.owner; // { type: 'item'|'block', id }
+        const synth = {
+          entries: { [owner.type]: [{ id: owner.id, visualPrograms: body.programs }] },
+        };
+        const r = compileProject(synth, { targetId, pkg: body.pkg });
+        return ok(res, {
+          ok: r.ok,
+          code: r.files?.map((f) => f.content || f.code || '').join('\n') || '',
+          files: r.files,
+          warnings: r.warnings,
+          errors: r.errors,
+        });
+      }
+
       // 程序列表（界面上「编译预览」传的是这一个）
       if (Array.isArray(body.programs)) {
         const r = compileProject({ ...body, visual: { programs: body.programs } }, { targetId });
@@ -236,6 +253,38 @@ export async function handleVisual(req, res, route, q, method) {
       const data = P.loadProject(root);
       if (!data.visual || typeof data.visual !== 'object') data.visual = { programs: [], libraries: [] };
       data.visual.programs = programs;
+      P.saveProject(root, data);
+      return ok(res, { saved: programs.length });
+    }
+
+    // 读一个条目（item/block）自带的积木程序（per-entry 绑定）
+    if (route === 'visual/entry-program' && method === 'GET') {
+      const root = resolveProjectRoot(q);
+      if (!root) return fail(res, 400, '缺少 root');
+      const type = qp(q, 'type');
+      const id = qp(q, 'id');
+      if (type !== 'item' && type !== 'block') return fail(res, 400, 'type 必须是 item 或 block');
+      if (!id) return fail(res, 400, '缺少 id');
+      const data = P.loadProject(root);
+      const entry = (data.entries?.[type] || []).find((e) => e.id === id);
+      if (!entry) return fail(res, 404, `找不到 ${type} 条目「${id}」`);
+      return ok(res, { type, id, programs: entry.visualPrograms || [] });
+    }
+
+    // 保存一个条目（item/block）自带的积木程序（整份替换）
+    if (route === 'visual/entry-program' && method === 'PUT') {
+      const body = await readBody(req);
+      const root = body.root || resolveProjectRoot(q);
+      if (!root) return fail(res, 400, '缺少 root');
+      const type = body.type;
+      const id = body.id;
+      if (type !== 'item' && type !== 'block') return fail(res, 400, 'type 必须是 item 或 block');
+      if (!id) return fail(res, 400, '缺少 id');
+      const programs = Array.isArray(body.programs) ? body.programs : [];
+      const data = P.loadProject(root);
+      const entry = (data.entries?.[type] || []).find((e) => e.id === id);
+      if (!entry) return fail(res, 404, `找不到 ${type} 条目「${id}」`);
+      entry.visualPrograms = programs;
       P.saveProject(root, data);
       return ok(res, { saved: programs.length });
     }

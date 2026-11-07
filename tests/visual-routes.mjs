@@ -256,5 +256,64 @@ console.log('\n[8] 扩展状态（界面要能看见自动发现了什么）');
   ok(Array.isArray(data.diagnostics), '带诊断数组');
 }
 
+console.log('\n[9] 条目级积木程序（per-entry 绑定）');
+{
+  const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mcstudio-vbe-'));
+  fs.mkdirSync(path.join(projRoot, '.studio'), { recursive: true });
+  fs.writeFileSync(path.join(projRoot, '.studio', 'project.json'), JSON.stringify({
+    meta: { name: 'T', id: 't', pkg: 'com.t' },
+    target: { platform: 'fabric', mcVersion: '26.3', id: 'fabric-26.3' },
+    entries: {
+      item: [{ id: 'ruby', nameZh: '红宝石' }],
+      block: [{ id: 'alt', nameZh: '替代方块' }],
+    },
+    files: {}, state: {}, hooks: { java: [], js: [] },
+    visual: { programs: [], libraries: [] },
+  }), 'utf8');
+
+  // 空程序能读
+  const r9 = await call('visual/entry-program', 'GET', {}, { root: projRoot, type: 'item', id: 'ruby' });
+  ok(r9.status === 200, '读条目程序返回 200', String(r9.status));
+  ok(Array.isArray(r9.data?.programs) && r9.data.programs.length === 0, '初始为空');
+
+  // 写一段合法的组合（item + item_use）
+  const prog = {
+    op: 'event.item_use', inputs: {}, fields: {},
+    next: { op: 'player.message', inputs: { text: { type: 'value', kind: 'text', value: '来自红宝石' } }, fields: {}, next: null },
+  };
+  const r9b = await call('visual/entry-program', 'PUT', { root: projRoot, type: 'item', id: 'ruby', programs: [prog] });
+  ok(r9b.status === 200, '保存条目程序成功', r9b.data?.error || String(r9b.status));
+  ok(r9b.data?.saved === 1, '存了 1 段');
+
+  // 读回并确认落到磁盘（重新 loadProject）
+  const r9c = await call('visual/entry-program', 'GET', {}, { root: projRoot, type: 'item', id: 'ruby' });
+  ok(r9c.data?.programs?.length === 1, '读回 1 段');
+  ok(r9c.data?.programs?.[0]?.op === 'event.item_use', '内容对得上');
+
+  // 参数校验：type 非法
+  const r9d = await call('visual/entry-program', 'PUT', { root: projRoot, type: 'entity', id: 'x', programs: [] });
+  ok(r9d.status === 400, 'type 非法被拒', String(r9d.status));
+  // 缺 id
+  const r9e = await call('visual/entry-program', 'GET', {}, { root: projRoot, type: 'item' });
+  ok(r9e.status === 400, '缺 id 被拒', String(r9e.status));
+  // 条目不存在
+  const r9f = await call('visual/entry-program', 'GET', {}, { root: projRoot, type: 'item', id: 'nope' });
+  ok(r9f.status === 404, '条目不存在被拒', String(r9f.status));
+
+  // 编译预览带 owner：合法组合应过
+  const r9g = await call('visual/compile', 'POST', { targetId: 'fabric-26.3', owner: { type: 'item', id: 'ruby' }, programs: [prog] });
+  ok(r9g.status === 200, '带 owner 编译返回 200', String(r9g.status));
+  ok(r9g.data?.ok === true, 'item+item_use 编译成功', (r9g.data?.errors || []).join('；'));
+
+  // 编译预览带 owner：非法组合（block + item_use）应被守卫拦下
+  const bad = { op: 'event.item_use', inputs: {}, fields: {}, next: null };
+  const r9h = await call('visual/compile', 'POST', { targetId: 'fabric-26.3', owner: { type: 'block', id: 'alt' }, programs: [bad] });
+  ok(r9h.status === 200, '非法组合编译也返回 200（错误在 body）', String(r9h.status));
+  ok(Array.isArray(r9h.data?.errors) && r9h.data.errors.length > 0, '守卫报出错误');
+  ok(/方块不能拥有/.test((r9h.data?.errors || []).join('')), '错误提到「方块不能拥有」', (r9h.data?.errors || []).join('；'));
+
+  fs.rmSync(projRoot, { recursive: true, force: true });
+}
+
 console.log(`\n${failed === 0 ? '全部通过' : `有 ${failed} 项失败`}\n`);
 process.exit(failed ? 1 : 0);

@@ -253,8 +253,10 @@ public final class CustomContent {
 | `item` | `event.item_use`（使用物品）、`event.player_rightclick_block`（手持右键）、`event.entity_attack`（手持攻击） |
 | `block` | `event.player_rightclick_block`（被右键）、`event.block_break`（被破坏） |
 
-> UI 入口（在物品/方块编辑面板里挂积木）为后续工作；本阶段只完成编译 + 生成 + 真编译验证后端，
-> 以及 `tests/visual.mjs` [22]–[24] 单元与 `tests/visual-build.mjs` 的 Gradle 真编译验证。
+> UI 入口已完成：物品/方块编辑面板新增「积木效果」区块，点击进入积木面板并锁定到该条目（scope）。
+> 面板标题/副标题显示当前条目，保存走 `entry.visualPrograms`，编译预览带 `owner` 触发守卫。
+> 路由新增 `GET/PUT /api/visual/entry-program`，`visual/compile` 支持 `owner` 参数；
+> 前端 `ui/visual.js` 改为 scope-aware，`tests/visual-routes.mjs` [9] 覆盖读写与守卫。
 
 ---
 

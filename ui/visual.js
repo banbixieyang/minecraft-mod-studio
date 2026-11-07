@@ -44,6 +44,7 @@ const V = {
 
 export function renderVisualPanel(ctx) {
   V.ctx = ctx;
+  V.scope = ctx.visualScope || null; // { type: 'item'|'block', id } 或 null（工程全局）
   V.host = el('div.full-panel.visual-panel');
   V.targetId = ctx.project?.target?.id || 'fabric-26.3';
   V.programs = [];
@@ -52,8 +53,8 @@ export function renderVisualPanel(ctx) {
   fill(V.host,
     el('div.panel-bar', {},
       el('button.btn.ghost.small', { onclick: ctx.onBack }, '← 返回'),
-      el('h2.panel-title', { text: '积木编程' }),
-      el('span.muted.small', { text: '拖积木拼程序，生成真 Java' }),
+      el('h2.panel-title', { text: V.scope ? `积木编程 · ${V.scope.type === 'item' ? '物品' : '方块'}「${V.scope.id}」` : '积木编程' }),
+      el('span.muted.small', { text: V.scope ? '只对该条目触发，不和其它条目混在一起' : '拖积木拼程序，生成真 Java' }),
       el('div.spacer'),
       el('button.btn.ghost.small', {
         title: '第一次用？跟着一步步来',
@@ -203,8 +204,13 @@ async function load() {
 
     // 没打开工程时也能玩积木 —— 只是不能存
     if (root) {
-      const p = await api.visualProgram(root);
-      V.programs = p.programs || [];
+      if (V.scope) {
+        const p = await api.entryVisualProgram(root, V.scope.type, V.scope.id);
+        V.programs = p.programs || [];
+      } else {
+        const p = await api.visualProgram(root);
+        V.programs = p.programs || [];
+      }
     } else {
       V.programs = [];
     }
@@ -803,7 +809,11 @@ async function savePrograms(notify = false) {
     return;
   }
   try {
-    await api.saveVisualProgram(V.ctx.root, V.programs);
+    if (V.scope) {
+      await api.saveEntryVisualProgram(V.ctx.root, V.scope.type, V.scope.id, V.programs);
+    } else {
+      await api.saveVisualProgram(V.ctx.root, V.programs);
+    }
     if (notify) toast(`已保存 ${V.programs.length} 段程序`);
   } catch (e) {
     toast(`保存失败：${e.message || e}`, 'error');
@@ -815,11 +825,14 @@ async function refreshPreview() {
   if (!V.preview) return;
   setContent(V.preview, el('div.loading', { text: '编译中…' }));
   try {
-    const r = await api.visualCompile({
+    const body = {
       targetId: V.targetId,
       programs: V.programs,
       pkg: V.ctx.project?.meta?.pkg,
-    });
+    };
+    // 条目级：带上 owner，让编译期守卫（OWNER_EVENT_RULES）报出非法组合
+    if (V.scope) body.owner = V.scope;
+    const r = await api.visualCompile(body);
     renderPreview(r);
   } catch (e) {
     setContent(V.preview, el('div.vb-side-warn', { text: `编译失败：${e.message || e}` }));
@@ -828,11 +841,13 @@ async function refreshPreview() {
 
 /** 编译预览：单条程序 */
 async function previewProgram(prog) {
-  const r = await api.visualCompile({
+  const reqBody = {
     targetId: V.targetId,
     programs: [prog],
     pkg: V.ctx.project?.meta?.pkg,
-  });
+  };
+  if (V.scope) reqBody.owner = V.scope;
+  const r = await api.visualCompile(reqBody);
   const body = el('div.vb-preview-body');
   const m = modal({ title: '这段程序编译成什么', body, width: 720 });
   fillPreview(body, r);

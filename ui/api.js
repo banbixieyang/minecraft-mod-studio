@@ -242,6 +242,10 @@ export const api = {
   visualProgram: (root) => request('GET', `/api/visual/program${qs({ root })}`),
   /** 保存工程的积木程序 */
   saveVisualProgram: (root, programs) => request('PUT', '/api/visual/program', { root, programs }),
+  /** 读一个条目（item/block）自带的积木程序（per-entry 绑定） */
+  entryVisualProgram: (root, type, id) => request('GET', `/api/visual/entry-program${qs({ root, type, id })}`),
+  /** 保存一个条目（item/block）自带的积木程序 */
+  saveEntryVisualProgram: (root, type, id, programs) => request('PUT', '/api/visual/entry-program', { root, type, id, programs }),
   /** 编译预览 */
   visualCompile: (body) => request('POST', '/api/visual/compile', body),
   /** Java → 积木 */

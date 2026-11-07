@@ -182,6 +182,15 @@ code { font-family: var(--mono); font-size: 12px; }
 .editor-bar h2 { margin: 0 0 2px; font-size: 16px; letter-spacing: -.3px; }
 .editor-scroll { flex: 1; overflow: auto; padding: 18px 22px 80px; }
 
+/* 条目编辑器里的「积木效果」区块（per-entry 绑定入口） */
+.entry-visual-section {
+  margin: 16px 22px 24px; padding: 14px 16px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.entry-visual-section .section-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.entry-visual-section h3 { margin: 0; font-size: 15px; letter-spacing: -.2px; }
+.entry-visual-section .muted.small { font-size: 12px; }
+
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; max-width: 900px; }
 .field.full { grid-column: 1 / -1; }
 @media (max-width: 1100px) { .form-grid { grid-template-columns: 1fr; } }
