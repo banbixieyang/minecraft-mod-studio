@@ -136,10 +136,13 @@ console.log('\n[2] 功能 IR：工程 / 效果 / 包 / 代码 / 文件');
 
 console.log('\n[3] 有证据的转换：模板整段回填 + 符号替换');
 {
+  // 这是「对玩家说」积木在 fabric-26.3 下**当前**生成的模板。
+  // 26.3 的基类 Player 只剩 1 参 sendSystemMessage，动作栏改用 sendOverlayMessage，
+  // 所以这里必须跟着更新 —— 否则转换规则匹配不到，测的就不是真实模板了。
   const blockCode = `if ("聊天栏".equals("动作栏")) {
-    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("你好"), true);
+    player.sendOverlayMessage(net.minecraft.network.chat.Component.literal("你好"));
 } else {
-    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("你好"), false);
+    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("你好"));
 }`;
   const f = IR.featureFromCode(blockCode, { targetId: 'fabric-26.3' });
   const r = ENG.convert(f, { targetId: 'forge-1.20.1' });

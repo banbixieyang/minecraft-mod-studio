@@ -165,7 +165,10 @@ ${opts.clientModsDir ? `\nclient_mods_dir=${opts.clientModsDir}\n` : ''}`,
           license: p.meta.license || 'MIT',
           icon: `assets/${id}/icon.png`,
           environment: '*',
-          entrypoints: { main: [`${pkg}.${cls}`] },
+          // 有「按下按键」事件时，额外注册客户端入口 —— 按键绑定只在客户端存在。
+          entrypoints: (p.visual?.programs || []).some((x) => x && x.op === 'event.key_pressed')
+            ? { main: [`${pkg}.${cls}`], client: [`${pkg}.client.ModClient`] }
+            : { main: [`${pkg}.${cls}`] },
           mixins: [`${id}.mixins.json`],
           depends: {
             fabricloader: `>=${t.loaderVersion}`,
@@ -240,6 +243,11 @@ ${opts.clientModsDir ? `\nclient_mods_dir=${opts.clientModsDir}\n` : ''}`,
   /** 可视化积木的事件接线 */
   visualWiring(p, info) {
     return visual.visualWiring(p, info);
+  },
+
+  /** 可视化积木的客户端接线（按键事件 → ModClient.java） */
+  visualClientWiring(p, info) {
+    return visual.visualClientWiring(p, info);
   },
 
   /**

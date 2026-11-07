@@ -19,6 +19,27 @@
  *   %body    容器型积木的子积木
  */
 
+/**
+ * 按键事件可选用的按键，值是中立的 `KEY_x` 后缀。
+ *
+ * 两个目标按键常量写法不同：
+ *   · Fabric 26.3：com.mojang.blaze3d.platform.InputConstants.KEY_R
+ *   · Forge 1.20.1：org.lwjgl.glfw.GLFW.GLFW_KEY_R
+ * 所以这里只存后缀，由目标适配器拼成各自的常量，模板不绑死某一个平台的写法。
+ */
+export const KEY_OPTIONS = [
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((c) => ({ value: `KEY_${c}`, label: c })),
+  ...'0123456789'.split('').map((c) => ({ value: `KEY_${c}`, label: c })),
+  ...['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12']
+    .map((c) => ({ value: `KEY_${c}`, label: c })),
+  // 这几个键在两个映射里名字一致（GLFW_KEY_SPACE / InputConstants.KEY_SPACE），
+  // 可以安全地用同一个后缀。回车/Shift/Ctrl 在两边叫法不同（KEY_RETURN vs
+  // GLFW_KEY_ENTER …），先不放进菜单，免得生成出编不过的常量。
+  { value: 'KEY_SPACE', label: '空格' },
+  { value: 'KEY_TAB', label: 'Tab' },
+  { value: 'KEY_GRAVE', label: '~ / `' },
+];
+
 /** 事件（帽形积木） */
 export const EVENT_BLOCKS = [
   {
@@ -75,6 +96,25 @@ export const EVENT_BLOCKS = [
     description: '玩家右键使用一个物品时触发。',
     inputs: [], fields: [], java: {},
   },
+  {
+    id: 'event.key_pressed',
+    category: 'event',
+    shape: 'hat',
+    label: '当按下按键时',
+    icon: '⌨',
+    description: '玩家在游戏里按下指定按键时触发。该按键会自动出现在游戏的「按键设置」里，玩家可以随时改键。',
+    inputs: [],
+    fields: [
+      {
+        name: 'key',
+        kind: 'menu',
+        string: true,
+        default: 'KEY_R',
+        options: KEY_OPTIONS,
+      },
+    ],
+    java: {},
+  },
 ];
 
 /** 玩家类积木 */
@@ -90,10 +130,12 @@ export const PLAYER_BLOCKS = [
       { name: 'mode', kind: 'menu', options: ['聊天栏', '动作栏'], default: '聊天栏', string: true },
     ],
     java: {
+      // 26.3 的基类 Player 只剩 1 参 sendSystemMessage；动作栏改用 sendOverlayMessage。
+      // 这样这段模板在 ServerPlayer（服务端事件）和 LocalPlayer（按键事件）下都能编。
       'fabric-26.3': `if (%mode.equals("动作栏")) {
-    player.sendSystemMessage(net.minecraft.network.chat.Component.literal(%text), true);
+    player.sendOverlayMessage(net.minecraft.network.chat.Component.literal(%text));
 } else {
-    player.sendSystemMessage(net.minecraft.network.chat.Component.literal(%text), false);
+    player.sendSystemMessage(net.minecraft.network.chat.Component.literal(%text));
 }`,
       'forge-1.20.1': `if (%mode.equals("动作栏")) {
     player.displayClientMessage(net.minecraft.network.chat.Component.literal(%text), true);

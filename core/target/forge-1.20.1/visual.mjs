@@ -211,3 +211,105 @@ export function visualWiring(p, info) {
   const importBlock = [...imports].sort().map((i) => `import ${i};`).join('\n');
   return `${init}\n\n// --- 积木接线所需的 import ---\n${importBlock}`;
 }
+
+/**
+ * 按键事件的**客户端**接线 —— 生成 ModClient.java。
+ *
+ * Forge 1.20.1 里键位注册和客户端 tick 在**两条不同的总线**上：
+ *   · RegisterKeyMappingsEvent —— MOD 总线
+ *   · TickEvent.ClientTickEvent —— FORGE 总线
+ * 所以拆成两个嵌套的静态订阅类，各挂各的总线。
+ *
+ * @param {object} p 工程数据
+ * @param {object} info { compiled: [{ op, methodName, bindId, key }] }
+ * @returns {{path:string, content:string}|null}
+ */
+export function visualClientWiring(p, info) {
+  const keys = (info?.compiled || []).filter((c) => c.op === 'event.key_pressed');
+  if (!keys.length) return null;
+
+  const pkg = p?.meta?.pkg || 'com.example.mymod';
+  const ns = p?.meta?.id || 'mymod';
+  const dir = pkg.replace(/\./g, '/');
+
+  const fields = keys.map((k, i) => {
+    const bindId = k.bindId || `kb${i}`;
+    // 1.20.1 仍用 LWJGL 的 GLFW 常量：中立的 KEY_R → GLFW_KEY_R
+    const keyConst = `GLFW_${String(k.key || 'KEY_R').replace(/^GLFW_/, '')}`;
+    return `    private static final net.minecraft.client.KeyMapping KEY_${bindId.toUpperCase()} = new net.minecraft.client.KeyMapping(
+            "${ns}.${bindId}",
+            org.lwjgl.glfw.GLFW.${keyConst},
+            "${ns}.key.category");`;
+  }).join('\n\n');
+
+  const registrations = keys.map((k, i) => {
+    const bindId = k.bindId || `kb${i}`;
+    return `            event.register(KEY_${bindId.toUpperCase()});`;
+  }).join('\n');
+
+  const checks = keys.map((k, i) => {
+    const bindId = k.bindId || `kb${i}`;
+    return `            if (KEY_${bindId.toUpperCase()}.consumeClick()) {
+                net.minecraft.client.player.LocalPlayer player = mc.player;
+                net.minecraft.client.multiplayer.ClientLevel level = mc.level;
+                if (player != null && level != null) {
+                    ${pkg}.custom.ModLogic.${k.methodName}(player, level);
+                }
+            }`;
+  }).join('\n');
+
+  const content = `package ${pkg}.client;
+
+import ${pkg}.custom.ModLogic;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import org.lwjgl.glfw.GLFW;
+
+/**
+ * 由 MC Studio 可视化积木生成的「按下按键」客户端逻辑。
+ *
+ * <p>这里注册的按键会出现在游戏的「按键设置」里，玩家可以随时改键。
+ * 按键只在客户端触发（Minecraft 的按键本来就是客户端概念）。
+ */
+public final class ModClient {
+${fields}
+
+    private ModClient() {
+    }
+
+    /** 键位注册（MOD 总线） */
+    @Mod.EventBusSubscriber(modid = "${ns}", value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
+    public static final class KeySetup {
+        @SubscribeEvent
+        public static void registerKeys(RegisterKeyMappingsEvent event) {
+${registrations}
+        }
+
+        private KeySetup() {
+        }
+    }
+
+    /** 客户端 tick 检测（FORGE 总线） */
+    @Mod.EventBusSubscriber(modid = "${ns}", value = Dist.CLIENT)
+    public static final class TickHandler {
+        @SubscribeEvent
+        public static void onClientTick(TickEvent.ClientTickEvent event) {
+            if (event.phase != TickEvent.Phase.END) return;
+            Minecraft mc = Minecraft.getInstance();
+${checks}
+        }
+
+        private TickHandler() {
+        }
+    }
+}
+`;
+  return { path: `src/main/java/${dir}/client/ModClient.java`, content };
+}

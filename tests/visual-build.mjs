@@ -107,6 +107,13 @@ function makeProject() {
       methodName: 'on_server_tick',
       next: block('world.rain', { inputs: { level: value('number', 1) } }),
     },
+    // 按键事件：客户端事件，键位注册进游戏「按键设置」（可改键），客户端 tick 检测按下
+    {
+      op: 'event.key_pressed',
+      methodName: 'on_key',
+      fields: { key: 'KEY_R' },
+      next: block('player.message', { inputs: { text: value('text', '按下了快捷键') } }),
+    },
     // 模组型积木：给物品 / 设方块 / 加效果（只用原版注册表 API）
     {
       op: 'event.entity_attack',
@@ -324,6 +331,31 @@ if (fs.existsSync(logicPath)) {
   ok(!/on_player_rightclick_block\(/.test(code), '接线用的是实际方法名而不是默认名');
   // 同一事件写了两段程序 → 方法名不能撞车
   ok((code.match(/public static void on_player_tick/g) || []).length === 1, '同名事件的方法名被自动避开了');
+}
+
+// 按键事件：客户端接线单独生成 ModClient.java（键位注册进游戏「按键设置」，可改键）
+const clientPath = path.join(projDir, 'src/main/java/com/example/visualbuild/client/ModClient.java');
+ok(fs.existsSync(clientPath), 'ModClient.java 已生成（按键事件）');
+if (fs.existsSync(clientPath)) {
+  const c = fs.readFileSync(clientPath, 'utf8');
+  ok(c.includes('on_key'), '客户端接线调用按键方法');
+  ok(/KeyMapping|KeyBinding/.test(c), '注册了键位（KeyMapping/KeyBinding）');
+  ok(c.includes('KEY_R'), '键位默认值来自积木字段');
+  ok(/wasPressed|consumeClick/.test(c), '客户端 tick 检测按下');
+  if (TARGET === 'forge-1.20.1') {
+    ok(c.includes('RegisterKeyMappingsEvent'), 'Forge 用 RegisterKeyMappingsEvent 注册键位');
+    ok(c.includes('Dist.CLIENT'), 'Forge 客户端专用订阅');
+  } else {
+    ok(c.includes('ClientModInitializer'), 'Fabric 客户端入口');
+    // Fabric 必须在 fabric.mod.json 里注册客户端入口，否则 ModClient 永远不会加载
+    const modJsonPath = path.join(projDir, 'src/main/resources/fabric.mod.json');
+    const mj = JSON.parse(fs.readFileSync(modJsonPath, 'utf8'));
+    ok(
+      Array.isArray(mj.entrypoints?.client)
+        && mj.entrypoints.client.includes('com.example.visualbuild.client.ModClient'),
+      'fabric.mod.json 注册了客户端入口',
+    );
+  }
 }
 
 // ---------- 3. 真编译 ----------

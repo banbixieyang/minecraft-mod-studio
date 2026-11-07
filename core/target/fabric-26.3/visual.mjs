@@ -191,3 +191,77 @@ export function visualWiring(p, info) {
   const importBlock = [...imports].sort().map((i) => `import ${i};`).join('\n');
   return `${init}\n\n// --- 积木接线所需的 import ---\n${importBlock}`;
 }
+
+/**
+ * 按键事件的**客户端**接线 —— 生成 ModClient.java。
+ *
+ * 按键是客户端概念：注册成 KeyMapping 后会自动出现在游戏的「按键设置」里，
+ * 玩家能随时改键（绑定名稳定，改键结果持久化在 options.txt）。
+ * 客户端每 tick 检测一次 wasPressed()，按下就调 ModLogic 里对应的方法。
+ *
+ * @param {object} p 工程数据
+ * @param {object} info { compiled: [{ op, methodName, bindId, key }] }
+ * @returns {{path:string, content:string}|null}
+ */
+export function visualClientWiring(p, info) {
+  const keys = (info?.compiled || []).filter((c) => c.op === 'event.key_pressed');
+  if (!keys.length) return null;
+
+  const pkg = p?.meta?.pkg || 'com.example.mymod';
+  const ns = p?.meta?.id || 'mymod';
+  const dir = pkg.replace(/\./g, '/');
+
+  const fields = keys.map((k, i) => {
+    const bindId = k.bindId || `kb${i}`;
+    // 26.3 把按键常量挪进了 InputConstants（不再依赖 LWJGL 的 GLFW 类），
+    // 类型枚举也从 KEYSYM 改名成 KEYBOARD。老的 GLFW_KEY_R 值也能兼容。
+    const keyConst = String(k.key || 'KEY_R').replace(/^GLFW_/, '');
+    return `    private static final net.minecraft.client.KeyMapping KEY_${bindId.toUpperCase()} = new net.minecraft.client.KeyMapping(
+            "${ns}.${bindId}",
+            com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD,
+            com.mojang.blaze3d.platform.InputConstants.${keyConst},
+            net.minecraft.client.KeyMapping.Category.MISC);`;
+  }).join('\n\n');
+
+  const calls = keys.map((k, i) => {
+    const bindId = k.bindId || `kb${i}`;
+    const f = `KEY_${bindId.toUpperCase()}`;
+    return `        net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper.registerKeyMapping(${f});
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (${f}.consumeClick()) {
+                net.minecraft.client.player.LocalPlayer player = client.player;
+                net.minecraft.client.multiplayer.ClientLevel level = client.level;
+                if (player != null && level != null) {
+                    ${pkg}.custom.ModLogic.${k.methodName}(player, level);
+                }
+            }
+        });`;
+  }).join('\n\n');
+
+  const content = `package ${pkg}.client;
+
+import ${pkg}.custom.ModLogic;
+import com.mojang.blaze3d.platform.InputConstants;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.ClientLevel;
+
+/**
+ * 由 MC Studio 可视化积木生成的「按下按键」客户端逻辑。
+ *
+ * <p>这里注册的按键会出现在游戏的「按键设置」里，玩家可以随时改键。
+ * 按键只在客户端触发（Minecraft 的按键本来就是客户端概念）。
+ */
+public class ModClient implements ClientModInitializer {
+${fields}
+
+    @Override
+    public void onInitializeClient() {
+${calls}
+    }
+}
+`;
+  return { path: `src/main/java/${dir}/client/ModClient.java`, content };
+}

@@ -126,6 +126,19 @@ function buildLang(p, locale) {
   if (oreCount) {
     out[`tag.block.${ns}.ores`] = zh ? '矿石' : 'Ores';
   }
+  // 「按下按键」事件：绑定名会出现在游戏的「按键设置」里。
+  // 编号必须和 compile.mjs 里分配的 bindId（kb0 / kb1 …）一致 ——
+  // 否则按键设置里会显示原始翻译键。
+  let kbCount = 0;
+  for (const g of p.visual?.programs || []) {
+    if (g && g.op === 'event.key_pressed') {
+      out[`${ns}.kb${kbCount}`] = zh ? `快捷键 ${kbCount + 1}` : `Hotkey ${kbCount + 1}`;
+      kbCount++;
+    }
+  }
+  if (kbCount > 0) {
+    out[`${ns}.key.category`] = zh ? 'MC Studio 快捷键' : 'MC Studio Hotkeys';
+  }
   return out;
 }
 

@@ -5,7 +5,7 @@
  */
 import { block, value, validate, countBlocks, cloneBlocks } from '../core/visual/model.mjs';
 import { registerBlocks, clearBlocks, getBlock, allBlocks, templateFor } from '../core/visual/blocks.mjs';
-import { compileProgram, compileProject, compileValue, javaStr, checkOwnerEvent, OWNER_EVENT_RULES } from '../core/visual/compile.mjs';
+import { compileProgram, compileProject, compileValue, javaStr, checkOwnerEvent, OWNER_EVENT_RULES, SIGNATURES, METHOD_PREFIX } from '../core/visual/compile.mjs';
 import { ensureBuiltin, createUserBlock, blockCatalog, exportUserBlocks } from '../core/visual/registry.mjs';
 import { decompile, RAW_JAVA_BLOCK } from '../core/visual/decompile.mjs';
 import { validateLibrary, installLibrary, exportLibrary, LIB_FORMAT } from '../core/visual/library.mjs';
@@ -448,6 +448,58 @@ console.log('\n[24] 接线：per-entry 按 owner 过滤（Fabric + Forge）');
   ok(fg.includes('import com.example.demo.registry.ModBlocks;'), 'Forge 导入 ModBlocks');
   ok(!fg.includes('import import'), 'Forge 不会出现重复 import 前缀');
   ok(!fg.includes('%handler') && !fg.includes('%ref'), 'Forge 占位符全部替换');
+}
+
+console.log('\n[25] 按键事件（客户端 + 可改键）');
+{
+  ok(SIGNATURES['event.key_pressed'] != null, '有按键事件签名');
+  ok(
+    SIGNATURES['event.key_pressed'].fabric26.includes('Player player'),
+    '按键事件用基类 Player（客户端可传 LocalPlayer）',
+  );
+  ok(METHOD_PREFIX['event.key_pressed'] === 'on_key', '方法名前缀是 on_key');
+
+  const prog = {
+    op: 'event.key_pressed',
+    fields: { key: 'KEY_R' },
+    next: block('player.message', { inputs: { text: value('text', 'hi') } }),
+  };
+  const project = {
+    meta: { pkg: 'com.example.demo' },
+    entries: {},
+    visual: { programs: [prog] },
+  };
+  const r = compileProject(project, { targetId: 'fabric-26.3', pkg: 'com.example.demo' });
+  ok(r.ok, '按键程序编译通过', (r.errors || []).join('；'));
+  ok(r.compiled[0]?.bindId === 'kb0', '分配了稳定绑定 id kb0');
+  ok(r.compiled[0]?.key === 'KEY_R', '编译结果带上按键值');
+
+  // 按键是客户端事件，绝不能进服务端接线（否则会调一个不存在的 init 方法）
+  const serverWiring = fabricVisual.visualWiring(
+    { meta: { pkg: 'com.example.demo' } },
+    { compiled: r.compiled },
+  );
+  ok(serverWiring === '', '按键事件不进服务端接线');
+
+  const fw = fabricVisual.visualClientWiring(
+    { meta: { pkg: 'com.example.demo', id: 'demo' } },
+    { compiled: r.compiled },
+  );
+  ok(fw && fw.path.endsWith('client/ModClient.java'), 'Fabric 生成 ModClient.java');
+  ok(fw.content.includes('InputConstants.KEY_R'), 'Fabric 用 InputConstants.KEY_R');
+  ok(fw.content.includes('consumeClick'), 'Fabric 客户端 tick 检测按下');
+  ok(fw.content.includes('ModLogic.on_key'), 'Fabric 调到按键方法');
+  ok(fw.content.includes('KeyMapping.Category.MISC'), 'Fabric 键位归入游戏按键分类');
+
+  const fg = forgeVisual.visualClientWiring(
+    { meta: { pkg: 'com.example.demo', id: 'demo' } },
+    { compiled: r.compiled },
+  );
+  ok(fg && fg.path.endsWith('client/ModClient.java'), 'Forge 生成 ModClient.java');
+  ok(fg.content.includes('GLFW.GLFW_KEY_R'), 'Forge 用 GLFW_KEY_R');
+  ok(fg.content.includes('RegisterKeyMappingsEvent'), 'Forge 注册键位（出现在按键设置）');
+  ok(fg.content.includes('consumeClick'), 'Forge 客户端 tick 检测按下');
+  ok(fg.content.includes('Dist.CLIENT'), 'Forge 客户端专用订阅');
 }
 
 console.log(`\n${failed === 0 ? '全部通过' : `有 ${failed} 项失败`}\n`);

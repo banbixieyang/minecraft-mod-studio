@@ -258,6 +258,30 @@ public final class CustomContent {
 > 路由新增 `GET/PUT /api/visual/entry-program`，`visual/compile` 支持 `owner` 参数；
 > 前端 `ui/visual.js` 改为 scope-aware，`tests/visual-routes.mjs` [9] 覆盖读写与守卫。
 
+### 8.2 按键事件（客户端 + 可改键）
+
+`event.key_pressed` 是**客户端**事件：帽形积木带一个 `key` 菜单字段（字母 / 数字 / F1–F12 /
+空格 / Tab / `~`），生成时由目标适配器注册成游戏原生键位，**自动出现在「选项 → 按键设置」里，
+玩家可以随时改键**（绑定名稳定，改键结果持久化在 `options.txt`）。
+
+- **不进服务端接线**：按键只存在于客户端，所以它**不会**进 `ModLogic.init()`；
+  目标适配器额外产出 `client/ModClient.java`：
+  - Fabric 26.3：`ClientModInitializer` + `KeyMappingHelper.registerKeyMapping`，
+    `ClientTickEvents.END_CLIENT_TICK` 里 `consumeClick()` 检测；
+    `fabric.mod.json` 的 `entrypoints.client` 指向 `pkg.client.ModClient`。
+  - Forge 1.20.1：`@Mod.EventBusSubscriber(Dist.CLIENT)` 两个嵌套订阅类
+    （`RegisterKeyMappingsEvent` 在 MOD 总线、`ClientTickEvent` 在 FORGE 总线），
+    `consumeClick()` 检测。
+- **签名**：事件方法用基类 `Player` / `Level`（不是 `ServerPlayer`），
+  这样同一个方法在客户端（`LocalPlayer`）也能编过。
+- **按键常量**：积木里存中立的 `KEY_R`；Fabric 拼成 `InputConstants.KEY_R`
+  （26.3 已不依赖 LWJGL 的 GLFW 类），Forge 拼成 `GLFW.GLFW_KEY_R`。
+- **限制**：按键程序在客户端执行；要改世界（服务端权威）的逻辑需用「原始代码」积木自行发包。
+- **语言文件**：`resources.mjs` 给每个绑定补 `ns.kb0` / `ns.key.category`，
+  按键设置里显示「快捷键 1」而不是原始翻译键。
+- **验证**：`tests/visual.mjs` [25] 覆盖签名 / 绑定 id / 双目标客户端接线；
+  `tests/visual-build.mjs` 对 Fabric 与 Forge 各跑一次**真 Gradle 编译**。
+
 ---
 
 ## 9. API 点与来源（不许凭记忆）

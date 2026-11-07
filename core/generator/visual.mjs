@@ -19,7 +19,19 @@ export const EVENT_HOOKS = {
   'event.server_tick': 'serverTick',
   'event.block_break': 'blockBreak',
   'event.item_use': 'itemUse',
+  'event.key_pressed': 'keyPressed',
 };
+
+/** 工程里有没有任何积木程序（全局的 + 条目自带的） */
+function hasAnyProgram(p) {
+  if ((p?.visual?.programs || []).some((x) => x && x.op)) return true;
+  for (const type of ['item', 'block']) {
+    for (const e of p?.entries?.[type] || []) {
+      if ((e?.visualPrograms || []).some((x) => x && x.op)) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * 生成积木产物。
@@ -28,7 +40,9 @@ export const EVENT_HOOKS = {
  */
 export function genVisual(p, adapter) {
   const programs = p?.visual?.programs || [];
-  if (!programs.length) return [];
+  // 条目自带程序（entry.visualPrograms）也要能触发生成 —— 否则「只有条目级程序、
+  // 没有全局程序」的工程会一行代码都不生成。
+  if (!hasAnyProgram(p)) return [];
 
   ensureBuiltin();
   loadLibraries(p.__root || null);
@@ -69,9 +83,21 @@ export function genVisual(p, adapter) {
     }
   }
 
-  return [{
+  const files = [{
     path: file.path,
     content,
     reason: '可视化积木编译产物',
   }];
+
+  // 按键事件跑在客户端：额外产出 ModClient.java（注册到游戏「按键设置」的绑定 +
+  // 客户端 tick 检测）。目标适配器自己决定写法（Fabric ClientModInitializer /
+  // Forge @Mod.EventBusSubscriber）。
+  if (adapter.visualClientWiring) {
+    const clientFile = adapter.visualClientWiring(p, { compiled: r.compiled });
+    if (clientFile) {
+      files.push({ path: clientFile.path, content: clientFile.content, reason: '可视化积木：客户端按键接线' });
+    }
+  }
+
+  return files;
 }

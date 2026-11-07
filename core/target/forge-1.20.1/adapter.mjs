@@ -277,6 +277,11 @@ description='''\${mod_description}'''
     return visual.visualWiring(p, info);
   },
 
+  /** 可视化积木的客户端接线（按键事件 → ModClient.java） */
+  visualClientWiring(p, info) {
+    return visual.visualClientWiring(p, info);
+  },
+
   /**
    * 条目 → 注册表引用（per-entry 积木接线用来过滤「只有这个物品/方块才触发」）。
    *

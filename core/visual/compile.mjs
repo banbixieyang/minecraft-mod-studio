@@ -70,6 +70,16 @@ export const SIGNATURES = {
     forge: 'net.minecraft.server.level.ServerPlayer player, net.minecraft.world.level.Level level, net.minecraft.world.InteractionHand hand',
     body: 'public static void %method(%{sig}) {\n%body\n}',
   },
+  // 按键事件是**客户端**事件：按键绑定在游戏「按键设置」里，按下检测发生在
+  // 客户端 tick。所以签名用的是客户端玩家/世界（LocalPlayer / ClientLevel），
+  // 而不是服务端的 ServerPlayer —— 服务端根本收不到按键。
+  'event.key_pressed': {
+    // 用基类 Player / Level 而不是 LocalPlayer：积木模板里的 player.xxx 大多定义在
+    // Player 上，用基类两边都能编（客户端传 LocalPlayer、服务端传 ServerPlayer 都成立）。
+    fabric26: 'net.minecraft.world.entity.player.Player player, net.minecraft.world.level.Level level',
+    forge: 'net.minecraft.world.entity.player.Player player, net.minecraft.world.level.Level level',
+    body: 'public static void %method(%{sig}) {\n%body\n}',
+  },
 };
 
 /** 帽形积木对应的方法名前缀 */
@@ -80,6 +90,7 @@ export const METHOD_PREFIX = {
   'event.server_tick': 'on_server_tick',
   'event.block_break': 'on_block_break',
   'event.item_use': 'on_item_use',
+  'event.key_pressed': 'on_key',
 };
 
 /**
@@ -540,6 +551,10 @@ export function compileProject(project, opts = {}) {
   // 方法名去重：同一个事件写了两段程序，默认方法名会撞车
   // （Java 不允许同名方法，编译会失败）。
   const usedNames = new Set();
+  // 按键事件需要在客户端注册 KeyBinding/KeyMapping，每个按键一个稳定的绑定 id
+  // （kb0 / kb1 …）。这里按「全局程序 → 各条目程序」的顺序编号，
+  // 和生成语言文件（resources.mjs）里的编号保持一致。
+  let kbIndex = 0;
 
   tasks.forEach(({ prog, owner }) => {
     // 守卫：条目类型 + 事件 op 必须配对，否则这段程序永远触发不到。
@@ -576,7 +591,9 @@ export function compileProject(project, opts = {}) {
     warnings.push(...r.warnings);
     errors.push(...r.errors);
     if (!r.ok) return;
-    methods.push({ program: prog, method: r.methods[0], methodCode: r.methodCode });
+    // 按键事件：分配稳定绑定 id（仅客户端接线用，和语言文件编号一致）
+    const bindId = prog.op === 'event.key_pressed' ? `kb${kbIndex++}` : null;
+    methods.push({ program: prog, method: r.methods[0], methodCode: r.methodCode, bindId });
   });
 
   // 合成一个文件
@@ -623,6 +640,8 @@ export function compileProject(project, opts = {}) {
       op: m.program.op,
       methodName: m.method.name,
       owner: m.method.owner || null,
+      bindId: m.bindId,
+      key: m.program.fields?.key,
       program: m.program,
     })),
     warnings,

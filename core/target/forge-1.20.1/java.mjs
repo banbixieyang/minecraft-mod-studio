@@ -68,7 +68,12 @@ function defaultSpeed(type) {
 export function genMainClass(p) {
   const cls = toPascal(p.meta.id);
   const pkg = p.meta.pkg;
-  const hasVisual = (p.visual?.programs || []).length > 0;
+  // 只有「服务端事件」才会在 ModLogic 里生成 init()；按键事件是客户端事件，
+  // 接线在 ModClient（@Mod.EventBusSubscriber）里。纯按键工程不能调 ModLogic.init()。
+  const isServerProg = (x) => x && x.op && x.op !== 'event.key_pressed';
+  const hasVisual = (p.visual?.programs || []).some(isServerProg)
+    || ['item', 'block'].some((t) => (p.entries?.[t] || [])
+      .some((e) => (e.visualPrograms || []).some(isServerProg)));
   return `package ${pkg};
 
 import ${pkg}.custom.CustomContent;

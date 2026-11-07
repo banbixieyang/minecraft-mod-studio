@@ -44,10 +44,16 @@ export function genMainClass(p) {
   const pkg = p.meta.pkg;
   const hasBlocks = (p.entries.block || []).length > 0;
   const hasWorldgen = (p.entries.worldgen || []).length > 0;
-  const hasVisual = (p.visual?.programs || []).length > 0;
+  // 只有「服务端事件」（非按键事件）才会在 ModLogic 里生成 init()。
+  // 按键事件是客户端事件，接线在 ModClient 里 —— 纯按键工程不能调 ModLogic.init()，
+  // 否则会引用一个不存在的方法，javac 直接报错。
+  const isServerProg = (x) => x && x.op && x.op !== 'event.key_pressed';
+  const hasVisual = (p.visual?.programs || []).some(isServerProg)
+    || ['item', 'block'].some((t) => (p.entries?.[t] || [])
+      .some((e) => (e.visualPrograms || []).some(isServerProg)));
   const worldgenImport = hasWorldgen ? `import ${pkg}.world.ModWorldGen;\n` : '';
   const worldgenCall = hasWorldgen ? '        ModWorldGen.init();\n' : '';
-  // 有积木程序时，把接线挂进 onInitialize
+  // 有服务端积木程序时，把接线挂进 onInitialize
   const visualImport = hasVisual ? `import ${pkg}.custom.ModLogic;\n` : '';
   const visualCall = hasVisual ? '        ModLogic.init();\n' : '';
   return `package ${pkg};
